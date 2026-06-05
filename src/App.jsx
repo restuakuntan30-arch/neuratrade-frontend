@@ -19,8 +19,8 @@ var ADMIN_QRIS_URL  = "https://ibb.co.com/yFtwBRWp";
 var ADMIN_WA        = "62";
 var ADMIN_NAMA      = "NeuraTrade AI";
 var ADMIN_BANK      = [
-  { bank:"BCA",     no:"1234567890", atas:ADMIN_NAMA },
-  { bank:"Mandiri", no:"9876543210", atas:ADMIN_NAMA },
+  { bank:"BCA",     no:"0", atas:ADMIN_NAMA },
+  { bank:"Mandiri", no:"0", atas:ADMIN_NAMA },
 ];
 var ADMIN_EWALLET = [
   { name:"GoPay", no:"0822-5093-1638", color:"#00aad4" },
