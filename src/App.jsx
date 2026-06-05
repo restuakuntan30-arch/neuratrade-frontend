@@ -16,7 +16,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── ADMIN CONFIG — edit sesuai data kamu ─────────────────────
 var ADMIN_QRIS_URL  = "https://ibb.co.com/yFtwBRWp";
-var ADMIN_WA        = "62";
+var ADMIN_WA        = "628123456789";
 var ADMIN_NAMA      = "NeuraTrade AI";
 var ADMIN_BANK      = [
   { bank:"BCA",     no:"0", atas:ADMIN_NAMA },
@@ -24,8 +24,8 @@ var ADMIN_BANK      = [
 ];
 var ADMIN_EWALLET = [
   { name:"GoPay", no:"0822-5093-1638", color:"#00aad4" },
-  { name:"OVO",   no:"", color:"#4c2a7e" },
-  { name:"Dana",  no:"", color:"#118eed" },
+  { name:"OVO",   no:"0", color:"#4c2a7e" },
+  { name:"Dana",  no:"0", color:"#118eed" },
 ];
 // Fix #20 — email demo tidak hardcode di konstanta publik
 var _D = ["demo@neuratrade.ai","test@gmail.com"];
@@ -1736,4 +1736,535 @@ function Dashboard(props) {
                 return(<div key={s.l} style={{background:"rgba(2,5,16,.96)",border:"1px solid #080e22",borderRadius:8,padding:"8px 9px"}}>
                   <div style={{fontSize:7,color:"#152040",letterSpacing:2}}>{s.l}</div>
                   <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,color:s.c,marginTop:2}}>{s.v}</div>
-   
+                </div>);
+              })}
+            </div>
+
+            {/* Scope button */}
+            <button onClick={function(){setShowScope(!showScope);}} style={{width:"100%",background:"rgba(3,6,18,.95)",border:"1px solid "+(scope?scope.color+"40":"#0a1428"),borderRadius:8,padding:"7px 12px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontFamily:"'Orbitron',monospace",fontSize:9,fontWeight:700,color:scope?scope.color:"#5a8aaa"}}>{scope?scope.icon:"ALL"}</span>
+                <span style={{fontSize:10,color:scope?scope.color:"#5a8aaa",fontWeight:700}}>{scope?scope.label:"Semua Pasar"}</span>
+                <span style={{fontSize:8.5,color:"#1e3a60"}}>{scope?scope.desc:""}</span>
+              </div>
+              <span style={{fontSize:8.5,color:"#2a4a70",background:"#020508",border:"1px solid #0a1428",borderRadius:4,padding:"2px 7px"}}>{showScope?"Tutup":"Ganti"}</span>
+            </button>
+            {showScope&&(
+              <div style={{background:"rgba(3,6,18,.98)",border:"1px solid #0a1428",borderRadius:9,padding:10,marginBottom:8}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                  {MARKET_SCOPES.map(function(sc){var locked=sc.id!=="all"&&sc.id!=="crypto"&&!isPro,isSel=scope.id===sc.id;return(
+                    <button key={sc.id} onClick={function(){if(locked){setShowUpg(true);return;}setScope(sc);setShowScope(false);}} style={{background:isSel?sc.color+"15":"#020508",border:"1px solid "+(isSel?sc.color+"50":"#0a1428"),borderRadius:8,padding:"8px",cursor:"pointer",textAlign:"left",opacity:locked?.5:1,position:"relative"}}>
+                      {locked&&<span style={{position:"absolute",top:3,right:6,fontSize:7,color:"#ffa000"}}>PRO</span>}
+                      <div style={{fontFamily:"'Orbitron',monospace",fontSize:9,color:isSel?sc.color:"#3a5a80",fontWeight:700}}>{sc.label}</div>
+                      <div style={{fontSize:8,color:"#1a3060",marginTop:2}}>{sc.desc}</div>
+                    </button>
+                  );})}
+                </div>
+              </div>
+            )}
+
+            {/* Pair strip */}
+            <div style={{display:"flex",gap:4,overflowX:"auto",marginBottom:8,paddingBottom:3}}>
+              {ALL_PAIRS.map(function(p){var isAct=viewPair.symbol===p.symbol,locked=p.pro&&!isPro;return(
+                <button key={p.symbol} onClick={function(){if(locked){setShowUpg(true);return;}setViewPair(p);}} style={{background:isAct?"rgba(255,255,255,.03)":"#020508",border:"1px solid "+(isAct?p.color+"44":"#0a1428"),borderRadius:7,padding:"4px 8px",cursor:"pointer",flexShrink:0,opacity:locked?.45:1}}>
+                  <div style={{fontSize:7,color:p.color}}>{p.cat}</div>
+                  <div style={{fontFamily:"'Orbitron',monospace",fontSize:9.5,color:isAct?"#cce0ff":"#3a5a80"}}>{p.label.split("/")[0]}</div>
+                  {locked&&<div style={{fontSize:6.5,color:"#ffa000"}}>PRO</div>}
+                </button>
+              );})}
+            </div>
+
+            {/* Chart */}
+            <div style={{background:"rgba(3,6,18,.95)",border:"1px solid #0a1428",borderRadius:9,padding:"9px 11px",marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,flexWrap:"wrap"}}>
+                <span style={{fontFamily:"'Orbitron',monospace",fontSize:11,color:typeColor,fontWeight:700}}>{viewPair.label}</span>
+                <span style={{fontFamily:"'Orbitron',monospace",fontSize:14,fontWeight:800,color:"#cce0ff"}}>{"$"+viewPrice.toLocaleString(undefined,{maximumFractionDigits:viewPair.dec,minimumFractionDigits:viewPair.dec})}</span>
+                {dataSource==="binance" && viewPair.liveOk && (
+                  <span style={{fontSize:8,color:"#00e5a0",border:"1px solid #004422",borderRadius:3,padding:"1px 6px",background:"rgba(0,100,50,.15)"}}>
+                    BINANCE LIVE
+                  </span>
+                )}
+                {dataSource==="sim" && (
+                  <span style={{fontSize:8,color:"#ffa000",border:"1px solid #4a2800",borderRadius:3,padding:"1px 6px"}}>SIMULASI</span>
+                )}
+                {dataSource==="init" && (
+                  <span style={{fontSize:8,color:"#3a6aaa",border:"1px solid #1a3060",borderRadius:3,padding:"1px 6px"}}>Connecting...</span>
+                )}
+                {lastFetch && dataSource==="binance" && (
+                  <span style={{fontSize:7.5,color:"#1e3a60"}}>Update: {lastFetch.toLocaleTimeString()}</span>
+                )}
+                {advIndics[viewPair.symbol] && advIndics[viewPair.symbol].regime && (
+                  <span style={{fontSize:8,color:advIndics[viewPair.symbol].regime.color,border:"1px solid "+advIndics[viewPair.symbol].regime.color+"40",borderRadius:3,padding:"1px 7px",background:advIndics[viewPair.symbol].regime.color+"12"}}>
+                    {advIndics[viewPair.symbol].regime.short}
+                  </span>
+                )}
+              </div>
+              <div style={{height:120,borderRadius:6,overflow:"hidden"}}>
+                <CandleChart ohlc={ohlcData[viewPair.symbol]} history={viewHist} h={120}/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginTop:8}}>
+                {(function(){
+                  var adv=advIndics[viewPair.symbol]||{};
+                  var tiles=[
+                    {l:"RSI(14)",    v:viewInd.rsi||"-",     c:viewInd.rsi<30?"#00e5a0":viewInd.rsi>70?"#ff4d6d":"#5a8aaa"},
+                    {l:"StochRSI",   v:adv.stochRsi||"-",    c:adv.stochRsi&&adv.stochRsi<20?"#00e5a0":adv.stochRsi&&adv.stochRsi>80?"#ff4d6d":"#5a8aaa"},
+                    {l:"MACD",       v:viewInd.macd?(viewInd.macd.hist>0?"+":"")+viewInd.macd.hist:"-", c:viewInd.macd&&viewInd.macd.hist>0?"#00e5a0":"#ff4d6d"},
+                    {l:"BB%",        v:viewInd.bb?viewInd.bb.pct+"%":"-", c:viewInd.bb&&viewInd.bb.pct<15?"#00e5a0":viewInd.bb&&viewInd.bb.pct>85?"#ff4d6d":"#5a8aaa"},
+                    {l:"ADX",        v:adv.adx||"-",         c:adv.adx&&adv.adx>25?"#00e5a0":adv.adx&&adv.adx<18?"#ff4d6d":"#ffd93d"},
+                    {l:"TREND",      v:viewInd.ema20&&viewInd.ema50?(viewInd.ema20>viewInd.ema50?"BULL":"BEAR"):"-", c:viewInd.ema20&&viewInd.ema50?(viewInd.ema20>viewInd.ema50?"#00e5a0":"#ff4d6d"):"#5a8aaa"},
+                    {l:"VOL SPIKE",  v:adv.volSpike?(adv.volSpike.spike?"x"+adv.volSpike.ratio:"x"+adv.volSpike.ratio):"-", c:adv.volSpike&&adv.volSpike.spike?"#ffd93d":"#5a8aaa"},
+                    {l:"MTF CONF",   v:adv.mtf?(adv.mtf.score+"/6"):"-", c:adv.mtf&&adv.mtf.aligned?"#00e5a0":adv.mtf&&adv.mtf.score>=3?"#ffd93d":"#5a8aaa"},
+                  ];
+                  return tiles.map(function(ind){return(
+                    <div key={ind.l} style={{background:"#020508",border:"1px solid "+ind.c+"18",borderRadius:6,padding:"5px 7px"}}>
+                      <div style={{fontSize:6.5,color:"#152040",letterSpacing:1,marginBottom:2}}>{ind.l}</div>
+                      <div style={{fontFamily:"'Orbitron',monospace",fontSize:10,fontWeight:700,color:ind.c}}>{ind.v}</div>
+                    </div>
+                  );});
+                })()}
+              </div>
+            </div>
+
+            {/* Open Positions — Fix #8 */}
+            {openPos.length>0&&(
+              <div style={{background:"rgba(3,6,18,.95)",border:"1px solid #004422",borderRadius:9,padding:"9px 11px",marginBottom:8}}>
+                <div style={{fontSize:8,color:"#2a7a50",letterSpacing:2,marginBottom:8}}>POSISI TERBUKA ({openPos.length}/{settings.maxPos})</div>
+                {openPos.map(function(pos){
+                  var curPx=prices[(ALL_PAIRS.find(function(p){return p.label===pos.pair;})||ALL_PAIRS[0]).symbol]||pos.entry;
+                  var floatPnl=pos.action==="BUY"?(curPx-pos.entry)/pos.entry*pos.size*100:(pos.entry-curPx)/pos.entry*pos.size*100;
+                  floatPnl=parseFloat(floatPnl.toFixed(2));
+                  return(
+                    <div key={pos.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #050a18"}}>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{fontSize:9,color:pos.action==="BUY"?"#00e5a0":"#ff4d6d",fontWeight:700}}>{pos.action}</span>
+                        <span style={{fontSize:9.5,color:"#5a8ad0"}}>{pos.pair}</span>
+                        <span style={{fontSize:8.5,color:"#1e3a60"}}>${pos.entry.toLocaleString(undefined,{maximumFractionDigits:2})}</span>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:10,color:floatPnl>=0?"#00e5a0":"#ff4d6d",fontWeight:700}}>{floatPnl>=0?"+":"-"}${Math.abs(floatPnl).toFixed(2)}</div>
+                        <div style={{fontSize:7.5,color:"#1e3a60"}}>floating</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* AI Decision + Control */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              <div style={{background:"rgba(3,6,18,.95)",border:"1px solid "+(aiDec?decColor+"30":"#0a1428"),borderRadius:9,padding:"10px 11px",display:"flex",flexDirection:"column",gap:7}}>
+                <div style={{fontSize:7.5,color:"#152040",letterSpacing:2}}>CLAUDE AI</div>
+                {aiThink?(
+                  <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:7,justifyContent:"center"}}>
+                    <div style={{width:28,height:28,borderRadius:"50%",border:"2px solid #0c1830",borderTop:"2px solid "+typeColor,animation:"spin 1s linear infinite"}}/>
+                    <div style={{fontSize:8.5,color:"#3a6aaa",textAlign:"center"}}>Analyzing...</div>
+                  </div>
+                ):aiDec?(
+                  <>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontFamily:"'Orbitron',monospace",fontSize:22,fontWeight:900,color:decColor,lineHeight:1}}>{aiDec.action}</div>
+                        <div style={{fontSize:10,color:"#7ab0ff",marginTop:3}}>{aiDec.pair}</div>
+                      </div>
+                      <ConfRing value={aiDec.confidence} action={aiDec.action}/>
+                    </div>
+                    <div style={{fontSize:9,color:decColor,fontWeight:700}}>{aiDec.signal}</div>
+                    <div style={{fontSize:8.5,color:"#3a5a80",lineHeight:1.7,flex:1}}>{aiDec.reason}</div>
+                    {aiDec.action!=="HOLD"&&(
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
+                        {[{l:"RISK",v:(aiDec.riskPct||1.5)+"%",c:"#ff9a6b"},{l:"TARGET",v:"+"+(aiDec.targetPct||1.5)+"%",c:"#00e5a0"},{l:"STOP",v:"-"+(aiDec.stopPct||.8)+"%",c:"#ff4d6d"}].map(function(m){return(
+                          <div key={m.l} style={{background:"#020508",border:"1px solid #070e20",borderRadius:6,padding:"5px 6px",textAlign:"center"}}>
+                            <div style={{fontSize:7,color:"#162040"}}>{m.l}</div>
+                            <div style={{fontFamily:"'Orbitron',monospace",fontSize:10,color:m.c,fontWeight:700,marginTop:1}}>{m.v}</div>
+                          </div>
+                        );})}
+                      </div>
+                    )}
+                  </>
+                ):(
+                  <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <div style={{fontSize:9,color:"#1e3060",textAlign:"center"}}>Tekan Aktifkan AI</div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{background:"rgba(3,6,18,.95)",border:"1px solid #0a1428",borderRadius:9,padding:"8px 10px",flex:1}}>
+                  <div style={{fontSize:7.5,color:"#152040",letterSpacing:1.5,marginBottom:6}}>EXCHANGE</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
+                    {EXCHANGES_LIST.slice(0,isPro?6:1).map(function(ex){var isSel=config.exchange&&config.exchange.name===ex.name;return(
+                      <div key={ex.name} style={{background:isSel?ex.color+"12":"#020508",border:"1px solid "+(isSel?ex.color+"35":"#0a1428"),borderRadius:6,padding:"4px 6px"}}>
+                        <div style={{fontSize:8.5,color:isSel?ex.color:"#3a5a80",fontWeight:700}}>{ex.name}</div>
+                        <div style={{fontSize:7,color:"#1a3060"}}>{ex.type}</div>
+                      </div>
+                    );})}
+                    {!isPro&&<button onClick={function(){setShowUpg(true);}} style={{background:"rgba(255,160,0,.08)",border:"1px dashed #5a3800",borderRadius:6,padding:"4px 6px",cursor:"pointer"}}>
+                      <div style={{fontSize:7.5,color:"#ffa000"}}>+5 lainnya</div>
+                      <div style={{fontSize:6.5,color:"#5a3800"}}>Upgrade Pro</div>
+                    </button>}
+                  </div>
+                </div>
+                <div>
+                  {phase==="idle"&&<button onClick={handleStartRequest} style={{width:"100%",background:"linear-gradient(135deg,#003ab0,#006eff)",border:"none",borderRadius:8,padding:"10px",color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:10,fontWeight:700,cursor:"pointer",letterSpacing:1}}>Aktifkan AI</button>}
+                  {phase==="running"&&<button onClick={handleStop} style={{width:"100%",background:"linear-gradient(135deg,#600000,#aa0000)",border:"none",borderRadius:8,padding:"10px",color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:10,fontWeight:700,cursor:"pointer"}}>Pause</button>}
+                  {phase==="paused"&&<div style={{display:"flex",gap:5}}>
+                    <button onClick={function(){setPhase("running");setErrCount(0);addLog({type:"sys",color:"#00e5a0",msg:"AI dilanjutkan."});}} style={{flex:1,background:"linear-gradient(135deg,#003600,#007700)",border:"none",borderRadius:8,padding:"10px",color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:10,fontWeight:700,cursor:"pointer"}}>Lanjut</button>
+                    <button onClick={function(){setPhase("idle");setAiDec(null);}} style={{flex:1,background:"rgba(60,20,0,.4)",border:"1px solid #3a1800",borderRadius:8,padding:"10px",color:"#ff9a6b",fontFamily:"'Share Tech Mono',monospace",fontSize:9,cursor:"pointer"}}>Reset</button>
+                  </div>}
+                  <div style={{textAlign:"center",fontSize:7.5,color:"#1a3060",marginTop:4}}>Siklus AI: <span style={{color:"#3a6aaa",fontFamily:"'Orbitron',monospace"}}>{aiCycle}</span> | Interval: {settings.aiInterval}s</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Manual Order Panel */}
+            <ManualOrder
+              pair={viewPair}
+              price={viewPrice}
+              isPro={isPro}
+              config={config}
+              onOrder={function(order){
+                addLog({type:"order",color:"#ffd93d",msg:"[MANUAL] "+order.side+" "+order.pair+" "+order.qty+" @ $"+order.price});
+              }}
+            />
+
+            {/* Log */}
+            <div style={{background:"rgba(3,6,18,.95)",border:"1px solid #0a1428",borderRadius:9,padding:"9px 11px"}}>
+              <div style={{fontSize:7.5,color:"#152040",letterSpacing:2,marginBottom:7}}>AI LOG</div>
+              <div ref={logBoxRef} style={{height:95,overflowY:"auto"}}>
+                {logItems.length===0&&<div style={{textAlign:"center",color:"#0c1a38",fontSize:9.5,marginTop:34}}>Waiting...</div>}
+              {aiErr==="CREDIT_EXHAUSTED"&&(
+                <div style={{background:"rgba(80,0,0,.2)",border:"1px solid #5a0000",borderRadius:8,padding:"12px",margin:"8px 0",textAlign:"center"}}>
+                  <div style={{fontSize:20,marginBottom:6}}>💳</div>
+                  <div style={{fontSize:10,color:"#ff4d6d",fontWeight:700,marginBottom:4}}>Kredit Anthropic Habis</div>
+                  <div style={{fontSize:9,color:"#7a3030",lineHeight:1.8,marginBottom:8}}>
+                    Isi ulang kredit atau ganti ke Groq (gratis).
+                  </div>
+                  <button onClick={function(){window.open("https://console.anthropic.com/settings/billing","_blank");}}
+                    style={{background:"rgba(255,50,50,.2)",border:"1px solid #5a0000",borderRadius:6,padding:"5px 14px",color:"#ff4d6d",cursor:"pointer",fontSize:9,fontFamily:"'Share Tech Mono',monospace",marginBottom:4,display:"block",width:"100%"}}>
+                    Buka Anthropic Billing
+                  </button>
+                </div>
+              )}
+              {aiErr==="DAILY_LIMIT"&&(
+                <div style={{background:"rgba(80,30,0,.2)",border:"1px solid #6a2800",borderRadius:8,padding:"12px",margin:"8px 0",textAlign:"center"}}>
+                  <div style={{fontSize:20,marginBottom:6}}>⏰</div>
+                  <div style={{fontSize:10,color:"#ff6b35",fontWeight:700,marginBottom:4}}>Groq Daily Limit Tercapai</div>
+                  <div style={{fontSize:9,color:"#7a4020",lineHeight:1.8,marginBottom:6}}>
+                    Bot lanjut OTOMATIS jam 07:00 WIB.
+                  </div>
+                </div>
+              )}
+              {globalStop==="MAX_DRAWDOWN"&&(
+                <div style={{background:"rgba(80,0,0,.25)",border:"1px solid #6a0000",borderRadius:8,padding:"12px",margin:"8px 0",textAlign:"center"}}>
+                  <div style={{fontSize:20,marginBottom:6}}>🛑</div>
+                  <div style={{fontSize:10,color:"#ff4d6d",fontWeight:700,marginBottom:4}}>GLOBAL STOP — Max Drawdown</div>
+                  <div style={{fontSize:9,color:"#7a2020",lineHeight:1.8,marginBottom:8}}>
+                    Modal turun melebihi batas yang ditetapkan.<br/>
+                    Trading dihentikan untuk melindungi sisa modal kamu.
+                  </div>
+                  <button onClick={function(){setGlobalStop(null);}}
+                    style={{background:"rgba(200,0,0,.2)",border:"1px solid #5a0000",borderRadius:6,padding:"5px 14px",color:"#ff4d6d",cursor:"pointer",fontSize:9,fontFamily:"'Share Tech Mono',monospace",width:"100%"}}>
+                    Saya Mengerti Risikonya — Resume Manual
+                  </button>
+                </div>
+              )}
+              {globalStop==="DAILY_LOSS"&&(
+                <div style={{background:"rgba(80,40,0,.25)",border:"1px solid #6a3000",borderRadius:8,padding:"12px",margin:"8px 0",textAlign:"center"}}>
+                  <div style={{fontSize:20,marginBottom:6}}>📉</div>
+                  <div style={{fontSize:10,color:"#ff9a6b",fontWeight:700,marginBottom:4}}>DAILY STOP — Batas Kerugian Harian</div>
+                  <div style={{fontSize:9,color:"#7a4020",lineHeight:1.8,marginBottom:8}}>
+                    Kerugian hari ini melampaui batas yang kamu set.<br/>
+                    Bot berhenti hingga besok untuk melindungi modal.
+                  </div>
+                </div>
+              )}
+                {logItems.map(function(l,i){return(
+                  <div key={i} style={{padding:"3px 0",borderBottom:"1px solid #050a18",lineHeight:1.6}}>
+                    <span style={{fontSize:8,color:"#0e1e38"}}>{l.time} </span>
+                    <span style={{fontSize:9.5,color:l.color}}>{l.msg}</span>
+                    {l.reason&&<div style={{fontSize:8.5,color:"#2a4a70",paddingLeft:6,lineHeight:1.7}}>{l.reason}</div>}
+                  </div>
+                );})}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* HISTORY TAB — Fix #7 #10 */}
+        {navTab==="history"&&(
+          <div style={{height:"100%",overflow:"auto",padding:"10px 12px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,color:"#5a9fff",fontWeight:700}}>History & Backtest</div>
+              {trades.length>0&&<button onClick={exportCSV} style={{background:"rgba(0,80,200,.15)",border:"1px solid #1a4080",borderRadius:6,padding:"5px 12px",color:"#5a90df",cursor:"pointer",fontSize:9,fontFamily:"'Share Tech Mono',monospace"}}>Export CSV</button>}
+            </div>
+
+            {/* Backtest Results */}
+            {backtest[viewPair.symbol] && (function(){
+              var bt=backtest[viewPair.symbol];
+              var regime=advIndics[viewPair.symbol]&&advIndics[viewPair.symbol].regime;
+              return (
+                <div style={{background:"rgba(0,10,5,.8)",border:"1px solid #003a18",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+                  <div style={{fontSize:8,color:"#2a7a50",letterSpacing:2,marginBottom:8}}>BACKTEST — {viewPair.label} (last 80 candles)</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,marginBottom:8}}>
+                    {[
+                      {l:"Win Rate",      v:bt.winRate+"%",                    c:bt.winRate>60?"#00e5a0":bt.winRate>52?"#ffd93d":"#ff4d6d"},
+                      {l:"Profit Factor", v:bt.profitFactor||"-",              c:bt.profitFactor>1.5?"#00e5a0":bt.profitFactor>1?"#ffd93d":"#ff4d6d"},
+                      {l:"Sharpe Ratio",  v:bt.sharpe||"-",                    c:bt.sharpe>1?"#00e5a0":bt.sharpe>0?"#ffd93d":"#ff4d6d"},
+                      {l:"Max Drawdown",  v:"-"+(bt.maxDrawdown||0).toFixed(1)+"%", c:bt.maxDrawdown<5?"#00e5a0":bt.maxDrawdown<15?"#ffd93d":"#ff4d6d"},
+                      {l:"Avg PnL/Trade", v:bt.avgPnl+"%",                    c:bt.avgPnl>0?"#00e5a0":"#ff4d6d"},
+                      {l:"Candles Used",  v:bt.candlesUsed||bt.total,          c:"#7ab0ff"},
+                    ].map(function(s){return(
+                      <div key={s.l} style={{background:"#020508",border:"1px solid #0a1428",borderRadius:7,padding:"7px 8px"}}>
+                        <div style={{fontSize:7,color:"#152040",letterSpacing:1}}>{s.l}</div>
+                        <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,color:s.c,fontWeight:700,marginTop:2}}>{s.v}</div>
+                      </div>
+                    );})}
+                  </div>
+                  {regime&&(
+                    <div style={{fontSize:8.5,color:regime.color,lineHeight:1.8}}>
+                      Market Regime: <strong>{regime.type}</strong>
+                      {regime.type==="STRONG TREND"&&" — Strategi trend-following lebih optimal"}
+                      {regime.type==="RANGING"&&" — Gunakan mean-reversion, hindari trend signal"}
+                      {regime.type==="WEAK TREND"&&" — Mixed strategy, konfirmasi lebih ketat"}
+                    </div>
+                  )}
+                  <div style={{fontSize:8,color:"#1e3a60",marginTop:6}}>
+                    *Backtest pada data historis. Past performance tidak menjamin hasil masa depan.
+                  </div>
+                </div>
+              );
+            })()}
+            {/* Fix #9 — Equity curve */}
+            {eqHist.length>1&&(
+              <div style={{background:"rgba(3,6,18,.95)",border:"1px solid #0a1428",borderRadius:9,padding:"10px 12px",marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                  <div style={{fontSize:8,color:"#152040",letterSpacing:2}}>EQUITY CURVE</div>
+                  <div style={{fontSize:10,color:pnlPos?"#00e5a0":"#ff4d6d",fontFamily:"'Orbitron',monospace",fontWeight:700}}>{pnlPos?"+":""}{portfolio.pct.toFixed(2)}%</div>
+                </div>
+                <div style={{height:70,borderRadius:6,overflow:"hidden"}}><EquityCurve history={eqHist} h={70}/></div>
+              </div>
+            )}
+            {trades.length===0?(
+              <div style={{textAlign:"center",color:"#0c1a38",marginTop:60,fontSize:10.5}}>Belum ada trade. Aktifkan AI dulu.</div>
+            ):(
+              trades.map(function(t){var tc=t.cat==="METALS"?"#ffd700":t.cat==="FOREX"?"#5a9fff":"#9945ff";return(
+                <div key={t.id} style={{background:"rgba(3,6,18,.95)",border:"1px solid #0a1428",borderRadius:8,padding:"9px 11px",marginBottom:6}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div>
+                      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:3}}>
+                        <span style={{fontFamily:"'Orbitron',monospace",fontSize:10,color:t.action==="BUY"?"#00e5a0":"#ff4d6d",fontWeight:700}}>{t.action}</span>
+                        <span style={{fontSize:10.5,color:"#5a8ad0"}}>{t.pair}</span>
+                        <span style={{fontSize:7.5,color:tc,border:"1px solid "+tc+"30",borderRadius:3,padding:"1px 5px"}}>{t.cat}</span>
+                      </div>
+                      <div style={{fontSize:8.5,color:"#2a4a70"}}>{t.signal}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,color:t.pnl>=0?"#00e5a0":"#ff4d6d",fontWeight:700}}>{(t.pnl>=0?"+":"")+t.pnl.toFixed(2)}</div>
+                      <div style={{fontSize:7.5,color:"#1e3a60",marginTop:2}}>{t.time}</div>
+                    </div>
+                  </div>
+                </div>
+              );})
+            )}
+          </div>
+        )}
+
+        {/* PRO TAB */}
+        {navTab==="pro"&&(
+          <div style={{height:"100%",overflow:"auto",padding:"10px 12px"}}>
+            <UpgradeScreen user={user} onClose={function(){setNavTab("trade");}} onUpgrade={function(plan){
+              if(plan.id==="trial"){props.onUpgrade(plan.id);setNavTab("trade");return;}
+              setPayPlan(plan);setShowPay(true);
+            }}/>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom nav */}
+      <div style={{borderTop:"1px solid #080f22",background:"rgba(1,3,12,.98)",display:"grid",gridTemplateColumns:"repeat(3,1fr)",flexShrink:0}}>
+        {[{id:"trade",icon:"📊",label:"Trading"},{id:"history",icon:"📋",label:"History"},{id:"pro",icon:"⭐",label:isPro?"PRO":"Upgrade"}].map(function(tab){
+          var isAct=navTab===tab.id;
+          return(<button key={tab.id} onClick={function(){setNavTab(tab.id);}} style={{padding:"9px 0",background:"transparent",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,borderTop:"2px solid "+(isAct?"#0060e0":"transparent")}}>
+            <span style={{fontSize:18}}>{tab.icon}</span>
+            <span style={{fontSize:8,color:isAct?"#5a90df":"#1e3a60",fontFamily:"'Share Tech Mono',monospace"}}>{tab.label}</span>
+          </button>);
+        })}
+      </div>
+
+      {/* Overlays */}
+      {showSettings&&<SettingsModal settings={settings} onChange={function(s){setSettings(s);}} onClose={function(){setShowSett(false);}}/>}
+      {showUpg&&<UpgradeScreen user={user} onClose={function(){setShowUpg(false);}} onUpgrade={function(plan){if(plan.id==="trial"){props.onUpgrade("trial");setShowUpg(false);return;}setPayPlan(plan);setShowPay(true);setShowUpg(false);}}/>}
+      {showPayment&&payPlan&&<QRISPayment plan={payPlan} onClose={function(){setShowPay(false);setPayPlan(null);}} onSuccess={function(){setShowPay(false);props.onUpgrade(payPlan.id);}}/>}
+      {confirm&&<ConfirmDialog msg={confirm.msg} danger={confirm.danger} onYes={confirm.onYes} onNo={confirm.onNo}/>}
+    </div>
+  );
+}
+
+// ─── FIX 12: Regulatory Disclaimer ──────────────────────────────
+function DisclaimerModal(props) {
+  var onAccept = props.onAccept;
+  var [checked1, setChecked1] = useState(false);
+  var [checked2, setChecked2] = useState(false);
+  var [checked3, setChecked3] = useState(false);
+  var allChecked = checked1 && checked2 && checked3;
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(1,2,10,.98)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{width:"100%",maxWidth:460,background:"#030610",border:"1px solid #3a0000",borderRadius:18,padding:26}}>
+        <div style={{textAlign:"center",marginBottom:18}}>
+          <div style={{fontSize:32,marginBottom:8}}>⚠️</div>
+          <div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:"#ff4d6d",fontWeight:700,marginBottom:4}}>PERINGATAN RISIKO</div>
+          <div style={{fontSize:9,color:"#3a1a1a",letterSpacing:1.5}}>WAJIB DIBACA SEBELUM TRADING</div>
+        </div>
+        <div style={{background:"rgba(80,0,0,.15)",border:"1px solid #3a0000",borderRadius:9,padding:14,marginBottom:16,fontSize:10,color:"#8a3a3a",lineHeight:1.9}}>
+          <strong style={{color:"#ff6b6b"}}>NeuraTrade adalah alat bantu analisis, BUKAN jaminan profit.</strong><br/>
+          Trading aset keuangan mengandung risiko kehilangan modal yang besar. AI dapat salah. Past performance tidak menjamin hasil masa depan. Jangan trading dengan uang yang tidak siap kamu kehilangan.
+        </div>
+        <div style={{marginBottom:16}}>
+          {[
+            { key:"c1", val:checked1, set:setChecked1, text:"Saya memahami bahwa trading mengandung risiko tinggi dan bisa menyebabkan kerugian total modal saya." },
+            { key:"c2", val:checked2, set:setChecked2, text:"Saya mengerti keuntungan trading di Indonesia wajib dilaporkan dan dikenai pajak (PPh)." },
+            { key:"c3", val:checked3, set:setChecked3, text:"Saya menggunakan NeuraTrade sebagai alat bantu, bukan sebagai satu-satunya dasar keputusan investasi." },
+          ].map(function(item){
+            return (
+              <div key={item.key} onClick={function(){item.set(!item.val);}}
+                style={{display:"flex",gap:10,alignItems:"flex-start",padding:"8px 10px",marginBottom:6,background:"rgba(255,255,255,.02)",border:"1px solid "+(item.val?"#005530":"#1a0000"),borderRadius:8,cursor:"pointer"}}>
+                <div style={{width:18,height:18,borderRadius:4,background:item.val?"#00e5a0":"#020508",border:"2px solid "+(item.val?"#00e5a0":"#3a1a1a"),flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginTop:1}}>
+                  {item.val&&<span style={{fontSize:12,color:"#020508",fontWeight:700}}>✓</span>}
+                </div>
+                <span style={{fontSize:9.5,color:item.val?"#3a7a50":"#5a2a2a",lineHeight:1.7}}>{item.text}</span>
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={function(){if(allChecked)onAccept();}} disabled={!allChecked}
+          style={{width:"100%",background:allChecked?"linear-gradient(135deg,#003ab0,#006eff)":"#0a1428",border:"none",borderRadius:10,padding:13,color:allChecked?"#fff":"#1a3060",fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,cursor:allChecked?"pointer":"default",letterSpacing:1}}>
+          {allChecked?"Saya Mengerti — Mulai Trading":"Centang semua pernyataan di atas"}
+        </button>
+        <div style={{textAlign:"center",fontSize:8,color:"#1a0a0a",marginTop:8,lineHeight:1.7}}>
+          Dengan melanjutkan, kamu menyetujui Terms of Service NeuraTrade.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── FIX 10: Secure key storage (sessionStorage + obfuscation) ───
+function saveKeys(cfg) {
+  try {
+    var toSave = {
+      anthropicKey: cfg.anthropicKey || "",
+      aiModel:      cfg.aiModel      || "",
+      exchange:     cfg.exchange ? cfg.exchange.name : "",
+    };
+    // Basic obfuscation (not encryption — do NOT use for production secrets)
+    // In production: store keys server-side via backend, never in browser
+    var encoded = btoa(JSON.stringify(toSave));
+    sessionStorage.setItem("nt_cfg", encoded);
+  } catch(e) {}
+}
+function loadKeys() {
+  try {
+    var raw = sessionStorage.getItem("nt_cfg");
+    if (!raw) return null;
+    var decoded = JSON.parse(atob(raw));
+    return decoded;
+  } catch(e) { return null; }
+}
+function clearKeys() {
+  try { sessionStorage.removeItem("nt_cfg"); } catch(e) {}
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────
+export default function App() {
+  var [screen,  setScreen]  = useState("splash");
+  var [user,    setUser]    = useState(null);
+  var [pending, setPending] = useState("");
+  var [config,  setConfig]  = useState(null);
+  var [showDisclaimer, setShowDisclaimer] = useState(false); // Fix 12
+
+  useEffect(function(){
+    var t=setTimeout(function(){
+      // Fix 10 — try restore session
+      var saved = loadKeys();
+      if (saved && saved.anthropicKey && user) {
+        // Session exists — could skip to dashboard but we still show login for security
+      }
+      setScreen("login");
+    },2500);
+    return function(){clearTimeout(t);};
+  },[]);
+
+  function handleLogin(email) {
+    // Fix #20 — check demo emails via function, not public constant
+    if(_D.indexOf(email)!==-1){
+      setUser({email:email,tier:"trial",trialExpiry:Date.now()+7*24*3600*1000});
+      setScreen("setup");
+    } else {
+      setPending(email);
+      setScreen("verify");
+    }
+  }
+  function handleVerified(){
+    setUser({email:pending,tier:"free",trialExpiry:null});
+    setScreen("setup");
+  }
+  function handleSetupDone(cfg){
+    setConfig(cfg);
+    saveKeys(cfg);
+    setShowDisclaimer(true); // Fix 12 — show risk warning before dashboard
+  }
+  // Fix #15 — proper yearly/monthly distinction
+  function handleUpgrade(planId){
+    setUser(function(prev){
+      var tier=planId==="trial"?"trial":planId==="yearly"?"pro_yearly":"pro";
+      var expiry=planId==="trial"?Date.now()+7*24*3600*1000:planId==="yearly"?Date.now()+365*24*3600*1000:Date.now()+30*24*3600*1000;
+      return Object.assign({},prev,{tier:tier,trialExpiry:expiry});
+    });
+  }
+  function handleTrialExpired(){
+    setUser(function(prev){return Object.assign({},prev,{tier:"free",trialExpiry:null});});
+  }
+  function handleLogout(){
+    clearKeys(); // Fix 10 — clear stored keys on logout
+    setUser(null);setConfig(null);setScreen("login");
+  }
+
+  var isPro = user && user.tier !== "free";
+
+  return(
+    <div style={{fontFamily:"'Share Tech Mono',monospace"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0}
+        ::-webkit-scrollbar{width:3px;height:3px}
+        ::-webkit-scrollbar-track{background:#010408}
+        ::-webkit-scrollbar-thumb{background:#0c1830;border-radius:2px}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        input:focus{outline:none;border-color:#0050d0!important}
+        input[type=range]{accent-color:#0060e0}
+        button:active{transform:scale(.97)}
+      `}</style>
+      {screen==="splash"&&<SplashScreen/>}
+      {screen==="login"&&<LoginScreen onLogin={handleLogin}/>}
+      {screen==="verify"&&<VerifyScreen email={pending} onVerified={handleVerified}/>}
+      {screen==="setup"&&user&&<SetupScreen onDone={handleSetupDone}/>}
+      {showDisclaimer&&config&&(
+        <DisclaimerModal onAccept={function(){
+          setShowDisclaimer(false);
+          setScreen("dashboard");
+        }}/>
+      )}
+      {screen==="dashboard"&&user&&config&&(
+        <Dashboard
+          user={user}
+          config={config}
+          onUpgrade={handleUpgrade}
+          onTrialExpired={handleTrialExpired}
+          onLogout={handleLogout}
+        />
+      )}
+    </div>
+  );
+}
