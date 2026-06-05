@@ -2536,7 +2536,7 @@ export default function App() {
       return;
     }
     // Real Supabase magic link via REST API
-    var SUPA_URL  = "https://fxxclrcwpiyxrdjhjxdf.supabase.co/rest/v1/";
+    var SUPA_URL  = "https://bgoezzoalgkoivygnoqp.supabase.co";
     var SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnb2V6em9hbGdrb2l2eWdub3FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MjY2OTYsImV4cCI6MjA5NjIwMjY5Nn0.J4DMIxoK1gEQ9nr6oAkdzCvBp5VkOhOnNne6PLvh4zY";
     try {
       var res = await fetch(SUPA_URL + "/auth/v1/otp", {
