@@ -733,90 +733,325 @@ function ConfirmDialog(props) {
   );
 }
 
-// ─── QRIS PAYMENT (fix #4 — proper Midtrans note) ─────────────
+// ─── SMART PAYMENT MODAL ────────────────────────────────────────
+// Menampilkan metode bayar sesuai pilihan user
+// QRIS → tampilkan QR Admin langsung
+// Bank → tampilkan rekening admin
+// E-Wallet → tampilkan nomor admin
 function QRISPayment(props) {
-  var plan=props.plan, onClose=props.onClose, onSuccess=props.onSuccess;
-  var [tab, setTab] = useState("qris");
-  var [paying, setPaying] = useState(false);
-  var [done, setDone] = useState(false);
-  var [tLeft, setTLeft] = useState(900);
-  useEffect(function(){var t=setInterval(function(){setTLeft(function(v){return v>0?v-1:0;});},1000);return function(){clearInterval(t);};}, []);
-  function fmt(s){return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
-  function confirm(){setPaying(true);setTimeout(function(){setPaying(false);setDone(true);setTimeout(function(){onSuccess();},1500);},2200);}
-  var priceStr=plan?"Rp "+plan.price.toLocaleString("id-ID"):"";
+  var plan     = props.plan;
+  var onClose  = props.onClose;
+  var onSuccess= props.onSuccess;
+  var userEmail= props.userEmail || "";
 
-  function QRBlock(){
-    return ADMIN_QRIS_URL
-      ? <img src={ADMIN_QRIS_URL} alt="QRIS" style={{width:160,height:160,borderRadius:10,objectFit:"contain",background:"#fff",padding:8}}/>
-      : <div style={{width:160,height:160,background:"#020508",border:"2px dashed #1a3a60",borderRadius:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
-          <div style={{fontSize:24}}>📷</div>
-          <div style={{fontSize:8.5,color:"#2a4a7a",textAlign:"center",lineHeight:1.6}}>Setup QRIS di baris 6 file ini</div>
-        </div>;
+  var [tab,        setTab]       = useState("qris");
+  var [step,       setStep]      = useState("choose"); // choose | paying | confirm | done | verifying
+  var [timer,      setTimer]     = useState(900);
+  var [copied,     setCopied]    = useState("");
+  var [waOpened,   setWaOpened]  = useState(false);
+
+  var priceStr = plan ? "Rp " + plan.price.toLocaleString("id-ID") : "";
+  var planName = plan ? plan.name : "";
+
+  // Countdown timer
+  useEffect(function() {
+    if (step !== "paying") return;
+    var t = setInterval(function() {
+      setTimer(function(v) {
+        if (v <= 1) { clearInterval(t); return 0; }
+        return v - 1;
+      });
+    }, 1000);
+    return function() { clearInterval(t); };
+  }, [step]);
+
+  function fmt(s) {
+    return String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0");
   }
 
-  if (done) return (
-    <div style={{position:"fixed",inset:0,background:"rgba(1,2,10,.97)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{textAlign:"center"}}>
-        <div style={{fontSize:52,marginBottom:16}}>✅</div>
-        <div style={{fontFamily:"'Orbitron',monospace",fontSize:16,color:"#00e5a0",marginBottom:8,fontWeight:700}}>Pembayaran Berhasil!</div>
-        <div style={{fontSize:10,color:"#2a5a40"}}>Akun Pro sudah aktif. Selamat trading!</div>
+  function copyText(text, key) {
+    navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(function() { setCopied(""); }, 2000);
+  }
+
+  // When user picks payment method → show payment details
+  function selectMethod(method) {
+    setTab(method);
+    setStep("paying");
+    setTimer(900);
+  }
+
+  // User confirms has paid → send to backend + open WhatsApp
+  async function confirmPaid() {
+    setStep("verifying");
+    var BACKEND = "https://neuratrade-backend.onrender.com";
+    var msg = "Halo Admin NeuraTrade,%0A%0ASaya sudah melakukan pembayaran:%0A" +
+              "Email: " + encodeURIComponent(userEmail) + "%0A" +
+              "Paket: " + planName + "%0A" +
+              "Nominal: " + priceStr + "%0A" +
+              "Metode: " + tab.toUpperCase() + "%0A%0AMohon aktivasi akun Pro saya.";
+    // Save pending to backend
+    try {
+      await fetch(BACKEND + "/api/payment/pending", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, plan: plan ? plan.id : "monthly", amount: plan ? plan.price : 299000, method: tab }),
+      });
+    } catch(e) {}
+    // Open WhatsApp admin
+    var waNum = ADMIN_WA || "628123456789";
+    window.open("https://wa.me/" + waNum + "?text=" + msg, "_blank");
+    setWaOpened(true);
+    setStep("confirm");
+  }
+
+  // Admin confirmed → check backend
+  async function checkActivation() {
+    setStep("verifying");
+    var BACKEND = "https://neuratrade-backend.onrender.com";
+    try {
+      var res  = await fetch(BACKEND + "/api/user/" + encodeURIComponent(userEmail));
+      var data = await res.json();
+      if (data && data.tier && data.tier !== "free") {
+        setStep("done");
+        setTimeout(function() { onSuccess(); }, 2000);
+        return;
+      }
+    } catch(e) {}
+    setStep("confirm");
+    alert("Akun belum diaktivasi. Hubungi admin via WhatsApp untuk konfirmasi.");
+  }
+
+  // ── DONE ──
+  if (step === "done") return (
+    <div style={{ position:"fixed",inset:0,background:"rgba(1,2,10,.98)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center" }}>
+      <div style={{ textAlign:"center" }}>
+        <div style={{ fontSize:56,marginBottom:16 }}>✅</div>
+        <div style={{ fontFamily:"'Orbitron',monospace",fontSize:18,color:"#00e5a0",marginBottom:8,fontWeight:700 }}>Pro Aktif!</div>
+        <div style={{ fontSize:11,color:"#2a5a40" }}>Selamat trading dengan semua fitur Pro</div>
       </div>
     </div>
   );
 
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(1,2,10,.97)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:16,overflowY:"auto"}}>
-      <div style={{width:"100%",maxWidth:420,background:"#030610",border:"1px solid #0a1828",borderRadius:18,padding:24}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+    <div style={{ position:"fixed",inset:0,background:"rgba(1,2,10,.97)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:16,overflowY:"auto" }}>
+      <div style={{ width:"100%",maxWidth:440,background:"#030610",border:"1px solid #0a1828",borderRadius:18,padding:24 }}>
+
+        {/* Header */}
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
           <div>
-            <div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:"#5a9fff",fontWeight:700}}>Pembayaran</div>
-            <div style={{fontSize:9.5,color:"#1e3a60",marginTop:2}}>{plan&&plan.name} — {priceStr}</div>
-          </div>
-          <button onClick={onClose} style={{background:"transparent",border:"1px solid #0a1428",borderRadius:6,padding:"4px 10px",color:"#2a4a70",cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",fontSize:10}}>Batal</button>
-        </div>
-        <div style={{textAlign:"center",marginBottom:12}}>
-          <div style={{background:"rgba(255,100,0,.1)",border:"1px solid #6a2800",borderRadius:7,padding:"5px 16px",display:"inline-block"}}>
-            <span style={{fontSize:8,color:"#aa6020",letterSpacing:1}}>BATAS WAKTU: </span>
-            <span style={{fontFamily:"'Orbitron',monospace",fontSize:18,color:tLeft<120?"#ff4d6d":"#ffa000",fontWeight:700}}>{fmt(tLeft)}</span>
-          </div>
-        </div>
-        <div style={{display:"flex",gap:6,marginBottom:14}}>
-          {[{id:"qris",label:"QRIS"},{id:"bank",label:"Transfer Bank"},{id:"ewallet",label:"E-Wallet"}].map(function(t){
-            var isAct=tab===t.id;
-            return <button key={t.id} onClick={function(){setTab(t.id);}} style={{flex:1,background:isAct?"rgba(0,80,200,.2)":"#020508",border:"1px solid "+(isAct?"#1a4080":"#0a1428"),borderRadius:7,padding:"6px 0",color:isAct?"#5a90df":"#2a4a70",cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",fontSize:9.5,transition:"all .15s"}}>{t.label}</button>;
-          })}
-        </div>
-        {tab==="qris"&&(
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:9.5,color:"#2a4a7a",marginBottom:10,lineHeight:1.8}}>Scan QR pakai GoPay · OVO · Dana · ShopeePay · m-Banking</div>
-            <div style={{display:"flex",justifyContent:"center",marginBottom:10}}><QRBlock/></div>
-            <div style={{fontSize:9,color:"#1e3a60",marginBottom:4}}>Total bayar:</div>
-            <div style={{fontFamily:"'Orbitron',monospace",fontSize:18,color:"#00e5a0",fontWeight:700,marginBottom:10}}>{priceStr}</div>
-          </div>
-        )}
-        {tab==="bank"&&(
-          <div>{ADMIN_BANK.map(function(b){return(
-            <div key={b.bank} style={{background:"#020508",border:"1px solid #0a1428",borderRadius:8,padding:"10px 12px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div><div style={{fontSize:10.5,color:"#5a8ad0",fontWeight:700}}>{b.bank}</div><div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:"#cce0ff",letterSpacing:2,marginTop:2}}>{b.no}</div><div style={{fontSize:8.5,color:"#1a3060",marginTop:1}}>a.n. {b.atas}</div></div>
-              <button onClick={function(){navigator.clipboard.writeText(b.no);}} style={{background:"rgba(0,80,200,.15)",border:"1px solid #1a4080",borderRadius:5,padding:"4px 10px",color:"#5a90df",cursor:"pointer",fontSize:9,fontFamily:"'Share Tech Mono',monospace"}}>Copy</button>
+            <div style={{ fontFamily:"'Orbitron',monospace",fontSize:13,color:"#5a9fff",fontWeight:700 }}>
+              {step === "choose" ? "Pilih Metode Bayar" :
+               step === "paying" ? "Selesaikan Pembayaran" :
+               step === "confirm" ? "Konfirmasi Pembayaran" :
+               step === "verifying" ? "Memverifikasi..." : "Selesai"}
             </div>
-          );})}</div>
-        )}
-        {tab==="ewallet"&&(
-          <div>{ADMIN_EWALLET.map(function(ew){return(
-            <div key={ew.name} style={{background:"#020508",border:"1px solid #0a1428",borderRadius:8,padding:"10px 12px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div><div style={{fontSize:10.5,color:ew.color,fontWeight:700}}>{ew.name}</div><div style={{fontSize:12,color:"#cce0ff",fontFamily:"'Share Tech Mono',monospace",marginTop:2}}>{ew.no}</div></div>
-              <button onClick={function(){navigator.clipboard.writeText(ew.no);}} style={{background:"rgba(0,80,200,.15)",border:"1px solid #1a4080",borderRadius:5,padding:"4px 10px",color:"#5a90df",cursor:"pointer",fontSize:9,fontFamily:"'Share Tech Mono',monospace"}}>Copy</button>
-            </div>
-          );})}</div>
-        )}
-        <button onClick={confirm} disabled={paying} style={{width:"100%",background:paying?"#0a1428":"linear-gradient(135deg,#005500,#009900)",border:"none",borderRadius:10,padding:12,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,cursor:paying?"default":"pointer",letterSpacing:1,marginTop:12}}>
-          {paying?"Memverifikasi...":"Saya Sudah Bayar"}
-        </button>
-        <div style={{textAlign:"center",fontSize:8.5,color:"#0e1e3a",marginTop:10,lineHeight:1.8}}>
-          Di production: Midtrans webhook otomatis verifikasi pembayaran.<br/>
-          Butuh bantuan? WhatsApp: {ADMIN_WA}
+            <div style={{ fontSize:9.5,color:"#1e3a60",marginTop:2 }}>{planName} — {priceStr}</div>
+          </div>
+          {step !== "verifying" && (
+            <button onClick={onClose} style={{ background:"transparent",border:"1px solid #0a1428",borderRadius:6,padding:"4px 10px",color:"#2a4a70",cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",fontSize:10 }}>
+              Tutup
+            </button>
+          )}
         </div>
+
+        {/* ══ STEP 1: CHOOSE METHOD ══ */}
+        {step === "choose" && (
+          <div>
+            <div style={{ fontSize:9,color:"#1e3a60",marginBottom:12,lineHeight:1.8 }}>
+              Pilih metode pembayaran yang kamu inginkan:
+            </div>
+            <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+              {/* QRIS */}
+              {ADMIN_QRIS_URL && (
+                <button onClick={function(){ selectMethod("qris"); }}
+                  style={{ display:"flex",alignItems:"center",gap:14,background:"rgba(0,100,200,.08)",border:"1px solid #1a4080",borderRadius:10,padding:"14px 16px",cursor:"pointer",textAlign:"left",transition:"all .2s" }}>
+                  <div style={{ width:44,height:44,borderRadius:10,background:"rgba(255,255,255,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0 }}>📱</div>
+                  <div>
+                    <div style={{ fontFamily:"'Orbitron',monospace",fontSize:11,color:"#5a9fff",fontWeight:700,marginBottom:3 }}>QRIS</div>
+                    <div style={{ fontSize:9.5,color:"#2a4a70" }}>GoPay · OVO · Dana · ShopeePay · m-Banking</div>
+                    <div style={{ fontSize:8.5,color:"#00e5a0",marginTop:2 }}>Scan QR Admin — langsung dari app manapun</div>
+                  </div>
+                  <span style={{ marginLeft:"auto",fontSize:18,color:"#5a9fff" }}>›</span>
+                </button>
+              )}
+              {/* Bank Transfer */}
+              {ADMIN_BANK && ADMIN_BANK.length > 0 && (
+                <button onClick={function(){ selectMethod("bank"); }}
+                  style={{ display:"flex",alignItems:"center",gap:14,background:"rgba(0,100,200,.08)",border:"1px solid #1a4080",borderRadius:10,padding:"14px 16px",cursor:"pointer",textAlign:"left",transition:"all .2s" }}>
+                  <div style={{ width:44,height:44,borderRadius:10,background:"rgba(255,255,255,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0 }}>🏦</div>
+                  <div>
+                    <div style={{ fontFamily:"'Orbitron',monospace",fontSize:11,color:"#ffd93d",fontWeight:700,marginBottom:3 }}>Transfer Bank</div>
+                    <div style={{ fontSize:9.5,color:"#2a4a70" }}>{ADMIN_BANK.map(function(b){return b.bank;}).join(" · ")}</div>
+                    <div style={{ fontSize:8.5,color:"#ffd93d",marginTop:2 }}>Transfer ke rekening admin</div>
+                  </div>
+                  <span style={{ marginLeft:"auto",fontSize:18,color:"#ffd93d" }}>›</span>
+                </button>
+              )}
+              {/* E-Wallet */}
+              {ADMIN_EWALLET && ADMIN_EWALLET.length > 0 && (
+                <button onClick={function(){ selectMethod("ewallet"); }}
+                  style={{ display:"flex",alignItems:"center",gap:14,background:"rgba(0,100,200,.08)",border:"1px solid #1a4080",borderRadius:10,padding:"14px 16px",cursor:"pointer",textAlign:"left",transition:"all .2s" }}>
+                  <div style={{ width:44,height:44,borderRadius:10,background:"rgba(255,255,255,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0 }}>💳</div>
+                  <div>
+                    <div style={{ fontFamily:"'Orbitron',monospace",fontSize:11,color:"#00bfa5",fontWeight:700,marginBottom:3 }}>E-Wallet</div>
+                    <div style={{ fontSize:9.5,color:"#2a4a70" }}>{ADMIN_EWALLET.map(function(e){return e.name;}).join(" · ")}</div>
+                    <div style={{ fontSize:8.5,color:"#00bfa5",marginTop:2 }}>Transfer saldo e-wallet ke admin</div>
+                  </div>
+                  <span style={{ marginLeft:"auto",fontSize:18,color:"#00bfa5" }}>›</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ══ STEP 2: PAYING ══ */}
+        {step === "paying" && (
+          <div>
+            {/* Timer */}
+            <div style={{ textAlign:"center",marginBottom:14 }}>
+              <div style={{ background:"rgba(255,100,0,.08)",border:"1px solid #3a1800",borderRadius:8,padding:"6px 16px",display:"inline-block" }}>
+                <div style={{ fontSize:8,color:"#aa5020",letterSpacing:1.5 }}>BATAS WAKTU</div>
+                <div style={{ fontFamily:"'Orbitron',monospace",fontSize:22,color:timer<120?"#ff4d6d":"#ffa000",fontWeight:700 }}>{fmt(timer)}</div>
+              </div>
+            </div>
+
+            {/* QRIS */}
+            {tab === "qris" && (
+              <div style={{ textAlign:"center" }}>
+                <div style={{ fontSize:10,color:"#3a5a80",marginBottom:12,lineHeight:1.8 }}>
+                  Scan QR ini menggunakan aplikasi apapun:<br/>
+                  <strong style={{ color:"#5a8aff" }}>GoPay · OVO · Dana · ShopeePay · LinkAja · m-Banking</strong>
+                </div>
+                <div style={{ display:"flex",justifyContent:"center",marginBottom:12 }}>
+                  <div style={{ background:"#fff",borderRadius:14,padding:12,display:"inline-block",boxShadow:"0 0 30px rgba(0,100,255,.2)" }}>
+                    <img src={ADMIN_QRIS_URL} alt="QRIS"
+                      style={{ width:200,height:200,objectFit:"contain",display:"block" }}
+                      onError={function(e){ e.target.style.display="none"; }}/>
+                  </div>
+                </div>
+                <div style={{ fontSize:9,color:"#1e3a60",marginBottom:4 }}>Nominal pembayaran:</div>
+                <div style={{ fontFamily:"'Orbitron',monospace",fontSize:22,color:"#00e5a0",fontWeight:700,marginBottom:4 }}>{priceStr}</div>
+                <div style={{ fontSize:8.5,color:"#1e3a60",marginBottom:14 }}>a.n. {ADMIN_NAMA}</div>
+                <div style={{ display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap",marginBottom:16 }}>
+                  {["GoPay","OVO","Dana","ShopeePay","LinkAja","BCA","Mandiri","BRI"].map(function(w){
+                    return <span key={w} style={{ fontSize:8,color:"#3a5a80",background:"#020508",border:"1px solid #0a1428",borderRadius:4,padding:"2px 7px" }}>{w}</span>;
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Bank Transfer */}
+            {tab === "bank" && (
+              <div>
+                <div style={{ fontSize:10,color:"#3a5a80",marginBottom:12,textAlign:"center" }}>
+                  Transfer tepat <strong style={{ color:"#ffd93d" }}>{priceStr}</strong> ke salah satu rekening:
+                </div>
+                {ADMIN_BANK.map(function(b, i) {
+                  return (
+                    <div key={i} style={{ background:"#020508",border:"1px solid #0a1428",borderRadius:9,padding:"12px 14px",marginBottom:8 }}>
+                      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+                        <div>
+                          <div style={{ fontSize:12,color:"#5a8ad0",fontWeight:700,marginBottom:4 }}>{b.bank}</div>
+                          <div style={{ fontFamily:"'Orbitron',monospace",fontSize:16,color:"#cce0ff",letterSpacing:2 }}>{b.no}</div>
+                          <div style={{ fontSize:9,color:"#1a3060",marginTop:3 }}>a.n. {b.atas}</div>
+                        </div>
+                        <button onClick={function(){ copyText(b.no, "bank"+i); }}
+                          style={{ background:copied==="bank"+i?"rgba(0,200,100,.15)":"rgba(0,80,200,.15)",border:"1px solid "+(copied==="bank"+i?"#005530":"#1a4080"),borderRadius:6,padding:"6px 12px",color:copied==="bank"+i?"#00e5a0":"#5a90df",cursor:"pointer",fontSize:9,fontFamily:"'Share Tech Mono',monospace",flexShrink:0 }}>
+                          {copied==="bank"+i?"✓ Copied":"Copy"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize:9,color:"#3a5a40",background:"rgba(0,60,30,.1)",border:"1px solid #003a18",borderRadius:6,padding:"7px 10px",lineHeight:1.8 }}>
+                  ⚠️ Transfer nominal TEPAT {priceStr} — jangan kurang atau lebih.<br/>
+                  Simpan bukti transfer untuk konfirmasi.
+                </div>
+              </div>
+            )}
+
+            {/* E-Wallet */}
+            {tab === "ewallet" && (
+              <div>
+                <div style={{ fontSize:10,color:"#3a5a80",marginBottom:12,textAlign:"center" }}>
+                  Kirim <strong style={{ color:"#00bfa5" }}>{priceStr}</strong> ke salah satu e-wallet:
+                </div>
+                {ADMIN_EWALLET.map(function(ew, i) {
+                  return (
+                    <div key={i} style={{ background:"#020508",border:"1px solid #0a1428",borderRadius:9,padding:"12px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+                      <div>
+                        <div style={{ fontSize:12,color:ew.color,fontWeight:700,marginBottom:4 }}>{ew.name}</div>
+                        <div style={{ fontFamily:"'Share Tech Mono',monospace",fontSize:14,color:"#cce0ff" }}>{ew.no}</div>
+                        <div style={{ fontSize:9,color:"#1a3060",marginTop:3 }}>a.n. {ADMIN_NAMA}</div>
+                      </div>
+                      <button onClick={function(){ copyText(ew.no, "ew"+i); }}
+                        style={{ background:copied==="ew"+i?"rgba(0,200,100,.15)":"rgba(0,80,200,.15)",border:"1px solid "+(copied==="ew"+i?"#005530":"#1a4080"),borderRadius:6,padding:"6px 12px",color:copied==="ew"+i?"#00e5a0":"#5a90df",cursor:"pointer",fontSize:9,fontFamily:"'Share Tech Mono',monospace",flexShrink:0 }}>
+                        {copied==="ew"+i?"✓ Copied":"Copy"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Confirm paid button */}
+            <button onClick={confirmPaid}
+              style={{ width:"100%",background:"linear-gradient(135deg,#005500,#009900)",border:"none",borderRadius:10,padding:13,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1,marginTop:8 }}>
+              ✅ Saya Sudah Bayar
+            </button>
+            <button onClick={function(){ setStep("choose"); }}
+              style={{ width:"100%",background:"transparent",border:"1px solid #0a1428",borderRadius:8,padding:8,color:"#2a4a70",cursor:"pointer",fontSize:10,marginTop:6 }}>
+              ← Ganti Metode
+            </button>
+          </div>
+        )}
+
+        {/* ══ STEP 3: CONFIRM (after WA opened) ══ */}
+        {step === "confirm" && (
+          <div style={{ textAlign:"center" }}>
+            <div style={{ fontSize:40,marginBottom:12 }}>📲</div>
+            <div style={{ fontSize:11,color:"#7ab0ff",fontWeight:700,marginBottom:8 }}>Konfirmasi ke Admin</div>
+            <div style={{ fontSize:10,color:"#3a5a80",lineHeight:1.8,marginBottom:16 }}>
+              WhatsApp ke admin sudah terbuka dengan detail pembayaran kamu.<br/>
+              <strong style={{ color:"#ffd93d" }}>Kirim pesan + foto bukti bayar</strong> ke admin.<br/>
+              Akun Pro akan diaktifkan dalam 5-15 menit.
+            </div>
+            <div style={{ background:"rgba(0,60,30,.1)",border:"1px solid #003a18",borderRadius:9,padding:12,marginBottom:14,textAlign:"left" }}>
+              <div style={{ fontSize:9,color:"#2a7a50",marginBottom:6,letterSpacing:1 }}>DETAIL PEMBAYARAN:</div>
+              <div style={{ fontSize:10,color:"#3a7a50",lineHeight:1.9 }}>
+                Paket: <strong>{planName}</strong><br/>
+                Nominal: <strong style={{ color:"#00e5a0" }}>{priceStr}</strong><br/>
+                Email: <strong>{userEmail}</strong><br/>
+                Metode: <strong>{tab.toUpperCase()}</strong>
+              </div>
+            </div>
+            <button onClick={function(){ window.open("https://wa.me/" + (ADMIN_WA||"628123456789"), "_blank"); }}
+              style={{ width:"100%",background:"linear-gradient(135deg,#005500,#009900)",border:"none",borderRadius:9,padding:11,color:"#fff",fontFamily:"'Share Tech Mono',monospace",fontSize:11,cursor:"pointer",marginBottom:8 }}>
+              📱 Buka WhatsApp Admin
+            </button>
+            <button onClick={checkActivation}
+              style={{ width:"100%",background:"linear-gradient(135deg,#003ab0,#006eff)",border:"none",borderRadius:9,padding:11,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,cursor:"pointer",marginBottom:8 }}>
+              🔄 Cek Aktivasi Akun
+            </button>
+            <div style={{ fontSize:8.5,color:"#1e3a60",lineHeight:1.7 }}>
+              Aktivasi biasanya 5-15 menit setelah konfirmasi ke admin.
+            </div>
+          </div>
+        )}
+
+        {/* ══ VERIFYING ══ */}
+        {step === "verifying" && (
+          <div style={{ textAlign:"center",padding:"20px 0" }}>
+            <div style={{ display:"flex",gap:6,justifyContent:"center",marginBottom:14 }}>
+              {[0,1,2].map(function(i){
+                return <div key={i} style={{ width:10,height:10,borderRadius:"50%",background:"#5a9fff",animation:"pulse 1.2s "+(i*.3)+"s infinite" }}/>;
+              })}
+            </div>
+            <div style={{ fontSize:11,color:"#5a9fff" }}>Mengecek status pembayaran...</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1318,22 +1553,29 @@ function Dashboard(props) {
     }
   }, [dataSource, startDemoTicker]);
 
-  // ── Fetch all pairs OHLC on demand ──
+  // ── Fetch all pairs OHLC from Binance ──
   var fetchAllKlines = useCallback(async function() {
     var cryptoPairs = ALL_PAIRS.filter(function(p){ return p.liveOk && p.bnb; });
     try {
       var results = await Promise.all(cryptoPairs.map(async function(p) {
-        var res = await fetch("https://api.binance.com/api/v3/klines?symbol=" + p.bnb + "&interval=1m&limit=100");
+        var res = await fetch(
+          "https://api.binance.com/api/v3/klines?symbol=" + p.bnb + "&interval=5m&limit=200",
+          { cache: "no-cache" }
+        );
+        if (!res.ok) throw new Error("Binance " + res.status);
         var data = await res.json();
+        if (!Array.isArray(data)) throw new Error("Invalid data");
         return { symbol: p.symbol, ohlc: data.map(function(k){
           return { t:k[0], o:parseFloat(k[1]), h:parseFloat(k[2]), l:parseFloat(k[3]), c:parseFloat(k[4]), v:parseFloat(k[5]) };
         })};
       }));
       var newOhlc = {}, newHist = {}, newPrices = {};
       results.forEach(function(r) {
-        newOhlc[r.symbol] = r.ohlc;
-        newHist[r.symbol] = r.ohlc.map(function(k){return k.c;});
-        newPrices[r.symbol] = r.ohlc[r.ohlc.length-1].c;
+        if (r.ohlc && r.ohlc.length > 0) {
+          newOhlc[r.symbol]   = r.ohlc;
+          newHist[r.symbol]   = r.ohlc.map(function(k){return k.c;});
+          newPrices[r.symbol] = r.ohlc[r.ohlc.length-1].c;
+        }
       });
       setOhlcData(function(prev){ return Object.assign({}, prev, newOhlc); });
       setHistory(function(prev){ return Object.assign({}, prev, newHist); });
@@ -1341,25 +1583,52 @@ function Dashboard(props) {
       setDataSource("binance");
       setLastFetch(new Date());
     } catch(err) {
+      console.warn("Binance fetch failed:", err.message, "— using simulation");
       setDataSource("sim");
       startDemoTicker();
     }
   }, [startDemoTicker]);
 
-  // ── Initial load: try Binance, fallback to simulation ──
+  // ── Fetch live ticker prices every 5 seconds ──
+  var fetchLivePrices = useCallback(async function() {
+    var cryptoPairs = ALL_PAIRS.filter(function(p){ return p.liveOk && p.bnb; });
+    try {
+      var symbols = JSON.stringify(cryptoPairs.map(function(p){return p.bnb;}));
+      var res = await fetch("https://api.binance.com/api/v3/ticker/price?symbols=" + encodeURIComponent(symbols));
+      if (!res.ok) return;
+      var data = await res.json();
+      if (!Array.isArray(data)) return;
+      data.forEach(function(item) {
+        var pair = cryptoPairs.find(function(p){return p.bnb===item.symbol;});
+        if (pair && item.price) {
+          var price = parseFloat(item.price);
+          setPrices(function(prev){ var u=Object.assign({},prev); u[pair.symbol]=price; return u; });
+          setHistory(function(prev){
+            var old=prev[pair.symbol]||[];
+            var u=Object.assign({},prev);
+            u[pair.symbol]=old.slice(-300).concat([price]);
+            return u;
+          });
+        }
+      });
+    } catch(e) {}
+  }, []);
+
+  // ── Initial load ──
   useEffect(function() {
     fetchAllKlines();
   }, []);
 
-  // ── Auto-refresh prices every 10 seconds ──
+  // ── Auto-refresh: full klines every 60s, prices every 5s ──
   useEffect(function() {
-    var t = setInterval(function() {
-      if (dataSource === "binance") {
-        fetchBinanceData();
-      }
-    }, 10000);
-    return function() { clearInterval(t); };
-  }, [dataSource, fetchBinanceData]);
+    var priceTimer = setInterval(function() {
+      if (dataSource === "binance") fetchLivePrices();
+    }, 5000);
+    var klinesTimer = setInterval(function() {
+      if (dataSource === "binance") fetchAllKlines();
+    }, 60000);
+    return function() { clearInterval(priceTimer); clearInterval(klinesTimer); };
+  }, [dataSource, fetchLivePrices, fetchAllKlines]);
 
   // Standard indicators
   useEffect(function(){
@@ -1691,7 +1960,7 @@ function Dashboard(props) {
   var aiCallsLeft=isPro?null:3-aiLimit.count;
 
   return(
-    <div style={{height:"100vh",display:"flex",flexDirection:"column",background:"#020810",overflow:"hidden"}}>
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",background:"#020810",overflow:"hidden"}} className="nt-dashboard-wrap">
 
       {/* Top bar */}
       <div style={{borderBottom:"1px solid #080f22",padding:"7px 12px",background:"rgba(1,3,12,.98)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
@@ -2080,8 +2349,22 @@ function Dashboard(props) {
         )}
       </div>
 
-      {/* Bottom nav */}
-      <div style={{borderTop:"1px solid #080f22",background:"rgba(1,3,12,.98)",display:"grid",gridTemplateColumns:"repeat(3,1fr)",flexShrink:0}}>
+      {/* Desktop sidebar nav */}
+      <div className="nt-desktop-nav" style={{position:"fixed",left:0,top:0,bottom:0,zIndex:50}}>
+        <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:900,letterSpacing:2,padding:"12px 4px 20px"}}>
+          <span style={{background:"linear-gradient(135deg,#0080ff,#00e5a0)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>NEURA</span>
+          <span style={{background:"linear-gradient(135deg,#ff4d6d,#ff8f6b)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TRADE</span>
+        </div>
+        {[{id:"trade",icon:"📊",label:"Trading"},{id:"history",icon:"📋",label:"History"},{id:"pro",icon:"⭐",label:isPro?"PRO":"Upgrade"}].map(function(tab){
+          var isAct=navTab===tab.id;
+          return <button key={tab.id} onClick={function(){setNavTab(tab.id);}} className={isAct?"active":""}>
+            <span style={{fontSize:18}}>{tab.icon}</span>{tab.label}
+          </button>;
+        })}
+      </div>
+
+      {/* Bottom nav (mobile only) */}
+      <div style={{borderTop:"1px solid #080f22",background:"rgba(1,3,12,.98)",display:"grid",gridTemplateColumns:"repeat(3,1fr)",flexShrink:0}} className="nt-bottom-nav">
         {[{id:"trade",icon:"📊",label:"Trading"},{id:"history",icon:"📋",label:"History"},{id:"pro",icon:"⭐",label:isPro?"PRO":"Upgrade"}].map(function(tab){
           var isAct=navTab===tab.id;
           return(<button key={tab.id} onClick={function(){setNavTab(tab.id);}} style={{padding:"9px 0",background:"transparent",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,borderTop:"2px solid "+(isAct?"#0060e0":"transparent")}}>
@@ -2183,31 +2466,122 @@ export default function App() {
   var [showDisclaimer, setShowDisclaimer] = useState(false); // Fix 12
 
   useEffect(function(){
-    var t=setTimeout(function(){
-      // Fix 10 — try restore session
-      var saved = loadKeys();
-      if (saved && saved.anthropicKey && user) {
-        // Session exists — could skip to dashboard but we still show login for security
+    // Check for magic link callback in URL hash or query
+    var hash = window.location.hash;
+    var search = window.location.search;
+    var hasAuthToken = hash.includes("access_token") || search.includes("access_token") 
+                    || hash.includes("type=magiclink") || search.includes("auth=magic");
+    
+    if (hasAuthToken) {
+      // Extract email from token and auto-login
+      var params = new URLSearchParams(hash.replace("#","") + "&" + search.replace("?",""));
+      var accessToken = params.get("access_token");
+      if (accessToken) {
+        // Decode JWT to get email
+        try {
+          var payload = JSON.parse(atob(accessToken.split(".")[1]));
+          var email = payload.email;
+          if (email) {
+            // Save auth token
+            sessionStorage.setItem("nt_access_token", accessToken);
+            sessionStorage.setItem("nt_email", email);
+            setUser({email:email, tier:"free", trialExpiry:null});
+            // Load real tier from backend
+            fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(email))
+              .then(function(r){return r.json();})
+              .then(function(data){
+                if(data && data.tier){
+                  var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
+                             : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
+                  setUser({email:email, tier:data.tier, trialExpiry:expiry});
+                }
+              }).catch(function(){});
+            // Clean URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setScreen("setup");
+            return function(){};
+          }
+        } catch(e){ console.warn("Token parse error", e); }
       }
-      setScreen("login");
-    },2500);
+    }
+    
+    // Check saved session
+    var savedEmail = sessionStorage.getItem("nt_email");
+    var savedKeys  = loadKeys();
+    if (savedEmail) {
+      setUser({email:savedEmail, tier:"free", trialExpiry:null});
+      fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(savedEmail))
+        .then(function(r){return r.json();})
+        .then(function(data){
+          if(data && data.tier){
+            var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
+                       : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
+            setUser({email:savedEmail, tier:data.tier, trialExpiry:expiry});
+            if(savedKeys) setScreen("dashboard");
+            else setScreen("setup");
+          }
+        }).catch(function(){});
+      return function(){};
+    }
+
+    var t=setTimeout(function(){ setScreen("login"); },2500);
     return function(){clearTimeout(t);};
   },[]);
 
-  function handleLogin(email) {
-    // Fix #20 — check demo emails via function, not public constant
+  async function handleLogin(email) {
+    // Check demo emails
     if(_D.indexOf(email)!==-1){
       setUser({email:email,tier:"trial",trialExpiry:Date.now()+7*24*3600*1000});
       setScreen("setup");
-    } else {
+      return;
+    }
+    // Real Supabase magic link via REST API
+    var SUPA_URL  = "https://fxxclrcwpiyxrdjhjxdf.supabase.co";
+    var SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4eGNscmN3cGl5eHJkamhqeGRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYzNDQ0NTAsImV4cCI6MjA2MTkyMDQ1MH0.B4VT7uEAHm0C5BYWh7kP0JiDJVsQOVSXj38tVqKnJgY";
+    try {
+      var res = await fetch(SUPA_URL + "/auth/v1/otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPA_ANON,
+        },
+        body: JSON.stringify({
+          email: email,
+          options: {
+            emailRedirectTo: window.location.origin + "/?auth=magic",
+          }
+        }),
+      });
+      if (res.ok) {
+        setPending(email);
+        setScreen("verify");
+        addMagicLog("Magic link dikirim ke " + email);
+      } else {
+        var err = await res.json();
+        alert("Gagal kirim magic link: " + (err.msg || err.error || "Unknown error"));
+      }
+    } catch(e) {
+      // Fallback: show verify screen with demo
       setPending(email);
       setScreen("verify");
     }
   }
   function handleVerified(){
     setUser({email:pending,tier:"free",trialExpiry:null});
+    // Load user data from backend
+    fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(pending))
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if(data && data.tier) {
+          var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime() 
+                     : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
+          setUser({email:pending, tier:data.tier, trialExpiry:expiry});
+        }
+      })
+      .catch(function(){});
     setScreen("setup");
   }
+  function addMagicLog(msg){ console.log("[Auth]", msg); }
   function handleSetupDone(cfg){
     setConfig(cfg);
     saveKeys(cfg);
@@ -2225,7 +2599,9 @@ export default function App() {
     setUser(function(prev){return Object.assign({},prev,{tier:"free",trialExpiry:null});});
   }
   function handleLogout(){
-    clearKeys(); // Fix 10 — clear stored keys on logout
+    clearKeys();
+    sessionStorage.removeItem("nt_email");
+    sessionStorage.removeItem("nt_access_token");
     setUser(null);setConfig(null);setScreen("login");
   }
 
@@ -2236,7 +2612,7 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
-        ::-webkit-scrollbar{width:3px;height:3px}
+        ::-webkit-scrollbar{width:4px;height:4px}
         ::-webkit-scrollbar-track{background:#010408}
         ::-webkit-scrollbar-thumb{background:#0c1830;border-radius:2px}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
@@ -2245,6 +2621,48 @@ export default function App() {
         input:focus{outline:none;border-color:#0050d0!important}
         input[type=range]{accent-color:#0060e0}
         button:active{transform:scale(.97)}
+        
+        /* ── RESPONSIVE DESKTOP ── */
+        @media (min-width: 768px) {
+          .nt-dashboard { display: flex; flex-direction: row; height: 100vh; }
+          .nt-sidebar { width: 280px; border-right: 1px solid #080f22; overflow-y: auto; }
+          .nt-main { flex: 1; overflow-y: auto; }
+          .nt-topbar { padding: 10px 24px !important; }
+          .nt-grid-2 { grid-template-columns: 1fr 1fr !important; }
+          .nt-grid-3 { grid-template-columns: 1fr 1fr 1fr !important; }
+          .nt-chart { height: 200px !important; }
+          .nt-card { padding: 18px 20px !important; }
+          .nt-font-lg { font-size: 16px !important; }
+          .nt-bottom-nav { display: none !important; }
+          .nt-desktop-nav { display: flex !important; }
+        }
+        @media (max-width: 767px) {
+          .nt-desktop-nav { display: none !important; }
+          .nt-sidebar { display: none !important; }
+        }
+        
+        /* Desktop nav sidebar */
+        .nt-desktop-nav {
+          flex-direction: column;
+          gap: 4px;
+          padding: 16px 12px;
+          background: rgba(1,3,12,.95);
+          border-right: 1px solid #080f22;
+          min-height: 100vh;
+          width: 200px;
+          display: none;
+        }
+        .nt-desktop-nav button {
+          display: flex; align-items: center; gap: 10px;
+          padding: 10px 12px; border-radius: 8px;
+          background: transparent; border: none; cursor: pointer;
+          text-align: left; color: #2a4a70;
+          font-family: 'Share Tech Mono', monospace; font-size: 11px;
+          transition: all .15s;
+        }
+        .nt-desktop-nav button.active, .nt-desktop-nav button:hover {
+          background: rgba(0,80,200,.15); color: #5a90df;
+        }
       `}</style>
       {screen==="splash"&&<SplashScreen/>}
       {screen==="login"&&<LoginScreen onLogin={handleLogin}/>}
