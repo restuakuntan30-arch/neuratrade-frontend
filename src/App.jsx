@@ -811,12 +811,24 @@ function SettingsModal(props) {
   var settings=props.settings, onChange=props.onChange, onClose=props.onClose;
   var [local, setLocal] = useState(Object.assign({},settings));
   function upd(key,val){setLocal(function(p){var _s=Object.assign({},p);_s[key]=val;return _s;});}
+  var sliders=[
+    {key:"riskPct",   label:"Risk per Trade (%)",      min:.5,  max:5,   step:.5,  unit:"%"},
+    {key:"confThresh",label:"Min Confidence AI (%)",   min:50,  max:90,  step:5,   unit:"%"},
+    {key:"aiInterval",label:"Interval Analisis (detik)",min:10, max:120, step:5,   unit:"s"},
+    {key:"maxPos",    label:"Max Posisi Terbuka",       min:1,   max:5,   step:1,   unit:""},
+    {key:"tradeFee",  label:"Fee Trading (%)",          min:0,   max:.5,  step:.05, unit:"%"},
+    {key:"slippage",  label:"Estimasi Slippage (%)",    min:0,   max:.3,  step:.05, unit:"%"},
+    {key:"maxDrawdown",label:"Max Drawdown Global (%)", min:2,   max:30,  step:1,   unit:"%"},
+    {key:"dailyLoss", label:"Max Kerugian Harian (%)",  min:1,   max:20,  step:.5,  unit:"%"},
+    {key:"stopLossPct",label:"Stop-Loss per Trade (%)", min:.5,  max:10,  step:.5,  unit:"%"},
+    {key:"takeProfitPct",label:"Take-Profit per Trade (%)",min:1,max:20,  step:.5,  unit:"%"},
+  ];
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(1,2,10,.96)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div style={{width:"100%",maxWidth:380,background:"#030610",border:"1px solid #0a1828",borderRadius:16,padding:24}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:"#5a9fff",fontWeight:700}}>Pengaturan AI</div>
-          <button onClick={onClose} style={{background:"transparent",border:"1px solid #0a1428",borderRadius:6,padding:"4px 10px",color:"#2a4a70",cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",fontSize:10}}>Batal</button>
+          <div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:"#5a9fff",fontWeight:700}}>⚙ Pengaturan</div>
+          <button onClick={onClose} style={{background:"transparent",border:"1px solid #0a1428",borderRadius:6,padding:"4px 10px",color:"#2a4a70",cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",fontSize:10}}>✕ Tutup</button>
         </div>
         {/* Model info */}
         <div style={{background:"rgba(60,20,80,.15)",border:"1px solid #3a1a5a",borderRadius:8,padding:"10px 12px",marginBottom:14}}>
@@ -1867,7 +1879,12 @@ function Dashboard(props) {
   var config=props.config||{balance:5000,exchange:EXCHANGES_LIST[0],scope:MARKET_SCOPES[0]};
 
   // All state BEFORE any computed values
-  var [navTab,   setNavTab]   = useState("trade");
+  var [navTab,       setNavTab]       = useState("trade");
+  var [chartTF,      setChartTF]      = useState("5m");
+  var [tfOhlc,       setTfOhlc]       = useState([]);
+  var [backendActive,setBackendActive]= useState(false);
+  var [slPct,        setSlPct]        = useState(2);   // Stop-loss %
+  var [tpPct,        setTpPct]        = useState(4);   // Take-profit %
   var [viewPair, setViewPair] = useState(ALL_PAIRS[0]);
   var [prices,   setPrices]   = useState({});
   var [history,  setHistory]  = useState({});
@@ -2116,6 +2133,20 @@ function Dashboard(props) {
   useEffect(function() {
     fetchAllKlines();
   }, []);
+
+  // ── Fetch klines for selected timeframe ──
+  useEffect(function() {
+    if (!viewPair) return;
+    var tf = chartTF === "1H" ? "1h" : chartTF === "4H" ? "4h" : chartTF === "1D" ? "1d" : chartTF;
+    fetch("https://api.binance.com/api/v3/klines?symbol=" + viewPair.symbol + "&interval=" + tf + "&limit=120")
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (!Array.isArray(data)) return;
+        setTfOhlc(data.map(function(k){
+          return { t:k[0], o:parseFloat(k[1]), h:parseFloat(k[2]), l:parseFloat(k[3]), c:parseFloat(k[4]), v:parseFloat(k[5]) };
+        }));
+      }).catch(function(){});
+  }, [chartTF, viewPair]);
 
   // ── Auto-refresh: full klines every 60s, prices every 5s ──
   useEffect(function() {
@@ -2613,7 +2644,27 @@ function Dashboard(props) {
                 )}
               </div>
               <div style={{borderRadius:8,overflow:"hidden",marginBottom:10}}>
-                <CandleChart ohlc={ohlcData[viewPair.symbol]} history={viewHist} pair={viewPair?viewPair.label:"BTC/USDT"} livePrice={prices[viewPair?viewPair.symbol:"BTCUSDT"]||0} h={window.innerWidth>768?320:200}/>
+                <div>
+              {/* Timeframe selector */}
+              <div style={{display:"flex",gap:4,marginBottom:6,alignItems:"center"}}>
+                {["1m","5m","15m","1H","4H","1D"].map(function(tf){
+                  return(
+                    <button key={tf} onClick={function(){setChartTF(tf);}}
+                      style={{background:chartTF===tf?"rgba(0,80,200,.3)":"transparent",border:"1px solid "+(chartTF===tf?"#1a4080":"#0a1428"),borderRadius:5,padding:"3px 8px",color:chartTF===tf?"#7ab0ff":"#2a4a70",cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",fontSize:9}}>
+                      {tf}
+                    </button>
+                  );
+                })}
+                <div style={{flex:1}}/>
+                {/* 24/7 backend toggle */}
+                <button onClick={toggleBackendTrading}
+                  style={{background:backendActive?"rgba(0,200,50,.2)":"rgba(60,60,60,.2)",border:"1px solid "+(backendActive?"#005530":"#2a2a2a"),borderRadius:5,padding:"3px 10px",color:backendActive?"#00e5a0":"#5a5a5a",cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",fontSize:9,display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{width:6,height:6,borderRadius:"50%",background:backendActive?"#00e5a0":"#5a5a5a",display:"inline-block",animation:backendActive?"pulse 1.5s infinite":"none"}}/>
+                  {backendActive?"24/7 AKTIF":"24/7 OFF"}
+                </button>
+              </div>
+              <CandleChart ohlc={tfOhlc} history={viewHist} pair={viewPair?viewPair.label:"BTC/USDT"} livePrice={prices[viewPair?viewPair.symbol:"BTCUSDT"]||0} h={window.innerWidth>768?320:200}/>
+            </div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginTop:8}}>
                 {(function(){
@@ -3041,141 +3092,138 @@ export default function App() {
   var [appReady, setAppReady] = useState(true); // always ready — state init handles session
 
   useEffect(function(){
-    // ── Version check: clear old incompatible localStorage data ──
-    var APP_VERSION = "v2.0";
-    var storedVersion = localStorage.getItem("nt_ver");
-    if (storedVersion !== APP_VERSION) {
-      // Clear old data that may be incompatible
-      try {
-        localStorage.removeItem("nt_cfg");
-        localStorage.removeItem("nt_email");
-        localStorage.removeItem("nt_access_token");
-        localStorage.setItem("nt_ver", APP_VERSION);
-      } catch(e) {}
-      setAppReady(true);
-      setScreen("login");
-      return;
-    }
-
+    // ══════════════════════════════════════════════════════════
+    //  SESSION RESTORE — User tetap login setelah F5/refresh
+    //  Logout HANYA terjadi saat user klik tombol Logout
+    // ══════════════════════════════════════════════════════════
     try {
-      // Check for magic link callback in URL hash or query
-      var hash = window.location.hash;
+      // 1. Cek magic link callback dari email
+      var hash   = window.location.hash;
       var search = window.location.search;
 
-      // Handle Supabase error in URL (expired/invalid magic link)
+      // Handle error dari Supabase (link expired, dll)
       if (hash.includes("error=") || search.includes("error=")) {
         var errParams = new URLSearchParams(hash.replace("#","") + "&" + search.replace("?",""));
-        var errCode = errParams.get("error_code") || "unknown";
-        var errDesc = (errParams.get("error_description") || "Link tidak valid").replace(/\+/g," ");
+        var errDesc   = (errParams.get("error_description") || "Link tidak valid").replace(/\+/g," ");
         window.history.replaceState({}, document.title, window.location.pathname);
         setAppReady(true);
         setScreen("login");
-        // Show error message after short delay
-        setTimeout(function() {
-          alert("❌ " + errDesc + "\n\nSilakan minta magic link baru.");
-        }, 500);
+        setTimeout(function(){ alert("❌ " + errDesc + "\n\nSilakan minta magic link baru."); }, 400);
         return;
       }
 
-      var hasAuthToken = hash.includes("access_token") || search.includes("access_token")
-                      || hash.includes("type=magiclink") || search.includes("auth=magic");
-
-      if (hasAuthToken) {
-        var params = new URLSearchParams(hash.replace("#","") + "&" + search.replace("?",""));
+      // Handle magic link sukses (ada access_token di URL)
+      var hasToken = hash.includes("access_token") || search.includes("access_token");
+      if (hasToken) {
+        var params      = new URLSearchParams(hash.replace("#","") + "&" + search.replace("?",""));
         var accessToken = params.get("access_token");
         if (accessToken) {
           try {
             var payload = JSON.parse(atob(accessToken.split(".")[1]));
-            var email = payload.email;
+            var email   = payload.email;
             if (email) {
-              localStorage.setItem("nt_access_token", accessToken);
+              // Simpan sesi ke localStorage
               localStorage.setItem("nt_email", email);
-              setUser({email:email, tier:"free", trialExpiry:null});
-              setAppReady(true);
-              fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(email))
-                .then(function(r){return r.json();})
-                .then(function(data){
-                  if(data && data.tier){
-                    var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
-                               : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
-                    setUser({email:email, tier:data.tier, trialExpiry:expiry});
-                  }
-                }).catch(function(){});
+              localStorage.setItem("nt_token", accessToken);
               window.history.replaceState({}, document.title, window.location.pathname);
-              // Check if user has existing config → go to dashboard
-              var existingKeys = loadKeys();
-              if (existingKeys && existingKeys.mode) {
-                setConfig(existingKeys);
+              setUser({ email:email, tier:"free", trialExpiry:null });
+              setAppReady(true);
+              // Cek apakah sudah ada config → langsung ke dashboard
+              var existingCfg = loadKeys();
+              if (existingCfg && existingCfg.mode) {
+                setConfig(existingCfg);
                 setScreen("dashboard");
               } else {
                 setScreen("setup");
               }
+              // Background: sync tier dari backend
+              fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(email))
+                .then(function(r){ return r.json(); })
+                .then(function(data){
+                  if (data && data.tier) {
+                    var exp = data.pro_expiry   ? new Date(data.pro_expiry).getTime()
+                            : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
+                    setUser({ email:email, tier:data.tier, trialExpiry:exp });
+                    localStorage.setItem("nt_tier",   data.tier);
+                    localStorage.setItem("nt_expiry",  exp || "");
+                  }
+                }).catch(function(){});
               return;
             }
-          } catch(e) { console.warn("Token parse error", e); }
+          } catch(e) { console.warn("Token parse:", e); }
         }
       }
 
-      // Check saved session
+      // 2. Restore sesi dari localStorage (F5 / buka ulang browser)
       var savedEmail = localStorage.getItem("nt_email");
-      var savedKeys  = loadKeys();
+      var savedCfg   = loadKeys();
 
-      if (savedEmail && savedKeys) {
-        var restoredCfg = Object.assign({}, savedKeys);
-        // Fix exchange object reference
-        if (restoredCfg.exchange && restoredCfg.exchange.name) {
-          var matchedEx = EXCHANGES_LIST.find(function(ex){ return ex.name === restoredCfg.exchange.name; });
-          if (matchedEx) restoredCfg.exchange = matchedEx;
+      if (savedEmail) {
+        // Ada email tersimpan → restore user
+        var savedTier   = localStorage.getItem("nt_tier")   || "free";
+        var savedExpiry = localStorage.getItem("nt_expiry");
+        var exp2 = savedExpiry ? parseInt(savedExpiry) : null;
+
+        setUser({ email:savedEmail, tier:savedTier, trialExpiry:exp2 });
+
+        if (savedCfg && savedCfg.mode) {
+          // Ada config → langsung ke dashboard TANPA loading
+          // Fix exchange & scope object reference
+          if (savedCfg.exchange && savedCfg.exchange.name) {
+            var matchEx = EXCHANGES_LIST.find(function(e){ return e.name === savedCfg.exchange.name; });
+            if (matchEx) savedCfg.exchange = matchEx;
+          }
+          if (savedCfg.scope && savedCfg.scope.id) {
+            var matchSc = MARKET_SCOPES.find(function(s){ return s.id === savedCfg.scope.id; });
+            if (matchSc) savedCfg.scope = matchSc;
+          }
+          setConfig(savedCfg);
+          setAppReady(true);
+          setScreen("dashboard");
+        } else {
+          // Punya email tapi belum setup → ke setup screen
+          setAppReady(true);
+          setScreen("setup");
         }
-        // Fix scope object reference
-        if (restoredCfg.scope && restoredCfg.scope.id) {
-          var matchedScope = MARKET_SCOPES.find(function(s){ return s.id === restoredCfg.scope.id; });
-          if (matchedScope) restoredCfg.scope = matchedScope;
-        }
-        setUser({email:savedEmail, tier:"free", trialExpiry:null});
-        setConfig(restoredCfg);
-        setAppReady(true);
-        setScreen("dashboard");
+
+        // Background: sync tier terbaru dari backend
         fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(savedEmail))
-          .then(function(r){return r.json();})
+          .then(function(r){ return r.json(); })
           .then(function(data){
-            if(data && data.tier){
-              var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
-                         : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
-              setUser({email:savedEmail, tier:data.tier, trialExpiry:expiry});
+            if (data && data.tier) {
+              var exp3 = data.pro_expiry   ? new Date(data.pro_expiry).getTime()
+                       : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
+              setUser({ email:savedEmail, tier:data.tier, trialExpiry:exp3 });
+              localStorage.setItem("nt_tier",  data.tier);
+              localStorage.setItem("nt_expiry", exp3 || "");
             }
           }).catch(function(){});
         return;
-      } else if (savedEmail) {
-        setUser({email:savedEmail, tier:"free", trialExpiry:null});
-        setAppReady(true);
-        setScreen("setup");
-        return;
       }
-    } catch(e) {
-      // If anything crashes, clear data and show login
-      console.error("Session restore error:", e);
-      try {
-        localStorage.removeItem("nt_cfg");
-        localStorage.removeItem("nt_email");
-        localStorage.removeItem("nt_access_token");
-      } catch(e2) {}
-    }
 
-    // Default: show splash then login
-    var t = setTimeout(function(){
+      // 3. Tidak ada sesi → splash screen → login
+      var t = setTimeout(function(){
+        setAppReady(true);
+        setScreen("login");
+      }, 2000);
+      return function(){ clearTimeout(t); };
+
+    } catch(e) {
+      // Safety net: kalau ada error tak terduga → tampilkan login
+      console.error("Session init error:", e);
       setAppReady(true);
       setScreen("login");
-    }, 2500);
-    return function(){ clearTimeout(t); };
-  },[]);;
+    }
+  },[]);;;
 
   async function handleLogin(email) {
-    // Check demo emails
+    // Demo emails: langsung masuk tanpa email
     if(_D.indexOf(email)!==-1){
-      setUser({email:email,tier:"trial",trialExpiry:Date.now()+7*24*3600*1000});
+      localStorage.setItem("nt_email", email);
+      localStorage.setItem("nt_tier", "trial");
+      setUser({email:email, tier:"trial", trialExpiry:Date.now()+7*24*3600*1000});
       setPending(email);
-      setScreen("verify_demo"); // special demo verify
+      setScreen("verify_demo");
       return;
     }
     // Real Supabase magic link via REST API  
@@ -3210,19 +3258,34 @@ export default function App() {
     }
   }
   function handleVerified(){
-    setUser({email:pending,tier:"free",trialExpiry:null});
-    // Load user data from backend
+    // Simpan email ke localStorage agar sesi persist
+    localStorage.setItem("nt_email", pending);
+    localStorage.setItem("nt_tier", "free");
+    setUser({email:pending, tier:"free", trialExpiry:null});
+    // Cek apakah sudah punya config → langsung dashboard
+    var existingCfg = loadKeys();
+    if (existingCfg && existingCfg.mode) {
+      if (existingCfg.exchange && existingCfg.exchange.name) {
+        var matchEx = EXCHANGES_LIST.find(function(e){ return e.name === existingCfg.exchange.name; });
+        if (matchEx) existingCfg.exchange = matchEx;
+      }
+      setConfig(existingCfg);
+      setScreen("dashboard");
+    } else {
+      setScreen("setup");
+    }
+    // Background sync tier
     fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(pending))
       .then(function(r){ return r.json(); })
       .then(function(data){
-        if(data && data.tier) {
-          var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime() 
-                     : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
-          setUser({email:pending, tier:data.tier, trialExpiry:expiry});
+        if(data && data.tier){
+          var exp = data.pro_expiry ? new Date(data.pro_expiry).getTime()
+                  : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
+          setUser({email:pending, tier:data.tier, trialExpiry:exp});
+          localStorage.setItem("nt_tier", data.tier);
+          localStorage.setItem("nt_expiry", exp || "");
         }
-      })
-      .catch(function(){});
-    setScreen("setup");
+      }).catch(function(){});
   }
   function addMagicLog(msg){ console.log("[Auth]", msg); }
   function handleSetupDone(cfg){
@@ -3241,13 +3304,62 @@ export default function App() {
   function handleTrialExpired(){
     setUser(function(prev){return Object.assign({},prev,{tier:"free",trialExpiry:null});});
   }
+  // ── 24/7 Backend Trading Toggle ──
+  async function toggleBackendTrading() {
+    var BACKEND = "https://neuratrade-backend.onrender.com";
+    if (backendActive) {
+      try {
+        await fetch(BACKEND + "/api/trading/stop", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ email: user.email }),
+        });
+      } catch(e) {}
+      setBackendActive(false);
+    } else {
+      if (!config || config.mode !== "real") {
+        alert("24/7 trading hanya tersedia di mode Real Trading dengan API key aktif.");
+        return;
+      }
+      try {
+        var res = await fetch(BACKEND + "/api/trading/start", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({
+            email:     user.email,
+            apiKey:    config.apiKey,
+            secretKey: config.secretKey,
+            exchange:  config.exchange?.name?.toLowerCase() || "binance",
+            settings:  Object.assign({}, settings, { balance: portfolio.bal }),
+            aiKey:     config.anthropicKey,
+            aiModel:   config.aiModel,
+            waNumber:  "",
+          }),
+        });
+        var data = await res.json();
+        if (data.ok) {
+          setBackendActive(true);
+          alert("✅ Backend 24/7 trading aktif! AI akan trading otomatis meski browser ditutup.");
+        } else {
+          alert("Gagal: " + (data.error || "Unknown error"));
+        }
+      } catch(e) {
+        alert("Gagal koneksi ke backend: " + e.message);
+      }
+    }
+  }
+
   function handleLogout(){
-    clearKeys();
-    localStorage.removeItem("nt_email");
-    localStorage.removeItem("nt_access_token");
+    // Hapus SEMUA data sesi - hanya terjadi saat user klik Logout
+    try {
+      localStorage.removeItem("nt_cfg");
+      localStorage.removeItem("nt_email");
+      localStorage.removeItem("nt_token");
+      localStorage.removeItem("nt_tier");
+      localStorage.removeItem("nt_expiry");
+    } catch(e) {}
     setUser(null);
     setConfig(null);
-    setAppReady(true); // keep ready so login screen shows
+    setBackendActive(false);
+    setAppReady(true);
     setScreen("login");
   }
 
