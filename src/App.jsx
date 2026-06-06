@@ -1728,54 +1728,52 @@ function Dashboard(props) {
   var [balLoading,  setBalLoading]  = useState(false);
   var [balError,    setBalError]    = useState("");
 
-  // ── Fetch real balance from exchange via backend ──────
-  var fetchRealBalance = useCallback(async function() {
-    if (!config || config.mode !== "real") return;
-    if (!config.apiKey || !config.secretKey) return;
+  // ── Fetch real balance — using ref to avoid infinite loop ──────
+  var configRef = useRef(config);
+  useEffect(function(){ configRef.current = config; }, [config]);
+
+  function fetchRealBalance() {
+    var cfg = configRef.current;
+    if (!cfg || cfg.mode !== "real") return;
+    if (!cfg.apiKey || !cfg.secretKey) return;
     setBalLoading(true);
     setBalError("");
-    try {
-      var BACKEND  = "https://neuratrade-backend.onrender.com";
-      var exName   = (config.exchange && config.exchange.name ? config.exchange.name : "binance").toLowerCase();
-      var res = await fetch(BACKEND + "/api/balance", {
-        method: "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "x-api-key":     config.apiKey,
-          "x-secret":      config.secretKey,
-          "x-exchange":    exName,
-        },
-        body: JSON.stringify({}),
-      });
-      var data = await res.json();
+    var BACKEND = "https://neuratrade-backend.onrender.com";
+    var exName  = (cfg.exchange && cfg.exchange.name ? cfg.exchange.name : "binance").toLowerCase();
+    fetch(BACKEND + "/api/balance", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key":    cfg.apiKey,
+        "x-secret":     cfg.secretKey,
+        "x-exchange":   exName,
+      },
+      body: JSON.stringify({}),
+    })
+    .then(function(res){ return res.json(); })
+    .then(function(data){
+      setBalLoading(false);
       if (data.error) {
         setBalError(data.error);
       } else {
         setRealBalance(data);
-        // Update portfolio dengan saldo real
         var realUsd = data.totalUsdt || 0;
-        setPortfolio(function(prev) {
-          return Object.assign({}, prev, {
-            bal:     realUsd,
-            initBal: prev.initBal === config.balance ? realUsd : prev.initBal,
-          });
-        });
-        setEqHist(function(prev) {
-          return prev.concat([{ time: Date.now(), bal: realUsd }]);
+        setPortfolio(function(prev){
+          return Object.assign({}, prev, { bal: realUsd });
         });
       }
-    } catch(e) {
-      setBalError("Gagal ambil saldo: " + e.message);
-    }
-    setBalLoading(false);
-  }, [config]);
+    })
+    .catch(function(e){
+      setBalLoading(false);
+      setBalError("Gagal: " + e.message);
+    });
+  }
 
-  // Auto-fetch balance on mount and every 30 seconds
+  // Auto-fetch balance setiap 30 detik — empty deps, no infinite loop
   useEffect(function() {
-    fetchRealBalance();
     var t = setInterval(fetchRealBalance, 30000);
     return function() { clearInterval(t); };
-  }, [fetchRealBalance]);
+  }, []); // eslint-disable-line
 
   // Fix #13 — use ref for availPairs to avoid stale closure
   var scopedCats   = scope ? scope.cats : ["CRYPTO","METALS","FOREX"];
@@ -2826,99 +2824,149 @@ function clearKeys() {
 
 // ─── MAIN APP ─────────────────────────────────────────────────
 export default function App() {
-  var [screen,  setScreen]  = useState("splash");
-  var [user,    setUser]    = useState(null);
+  // ── Synchronous init from localStorage (prevents black screen) ──
+  var [screen,  setScreen]  = useState(function(){
+    try {
+      var e = localStorage.getItem("nt_email");
+      var k = localStorage.getItem("nt_cfg");
+      if (e && k) return "dashboard";
+      if (e)      return "setup";
+    } catch(err) {}
+    return "splash";
+  });
+  var [user, setUser] = useState(function(){
+    try {
+      var e = localStorage.getItem("nt_email");
+      if (e) return { email:e, tier:"free", trialExpiry:null };
+    } catch(err) {}
+    return null;
+  });
+  var [config, setConfig] = useState(function(){
+    try {
+      var raw = localStorage.getItem("nt_cfg");
+      if (!raw) return null;
+      var d = JSON.parse(atob(raw));
+      if (d.exchange && d.exchange.name) {
+        var ex = EXCHANGES_LIST.find(function(e){ return e.name === d.exchange.name; });
+        if (ex) d.exchange = ex;
+      }
+      if (d.scope && d.scope.id) {
+        var sc = MARKET_SCOPES.find(function(s){ return s.id === d.scope.id; });
+        if (sc) d.scope = sc;
+      }
+      return d;
+    } catch(err) { return null; }
+  });
   var [pending, setPending] = useState("");
-  var [config,  setConfig]  = useState(null);
   var [showDisclaimer, setShowDisclaimer] = useState(false);
-  var [appReady, setAppReady] = useState(false); // prevents black screen on refresh
+  var [appReady, setAppReady] = useState(true); // always ready — state init handles session
 
   useEffect(function(){
-    // Check for magic link callback in URL hash or query
-    var hash = window.location.hash;
-    var search = window.location.search;
-    var hasAuthToken = hash.includes("access_token") || search.includes("access_token") 
-                    || hash.includes("type=magiclink") || search.includes("auth=magic");
-    
-    if (hasAuthToken) {
-      // Extract email from token and auto-login
-      var params = new URLSearchParams(hash.replace("#","") + "&" + search.replace("?",""));
-      var accessToken = params.get("access_token");
-      if (accessToken) {
-        // Decode JWT to get email
-        try {
-          var payload = JSON.parse(atob(accessToken.split(".")[1]));
-          var email = payload.email;
-          if (email) {
-            // Save auth token
-            localStorage.setItem("nt_access_token", accessToken);
-            localStorage.setItem("nt_email", email);
-            setUser({email:email, tier:"free", trialExpiry:null});
-            setAppReady(true);
-            // Load real tier from backend
-            fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(email))
-              .then(function(r){return r.json();})
-              .then(function(data){
-                if(data && data.tier){
-                  var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
-                             : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
-                  setUser({email:email, tier:data.tier, trialExpiry:expiry});
-                }
-              }).catch(function(){});
-            // Clean URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-            setScreen("setup");
-            return function(){};
-          }
-        } catch(e){ console.warn("Token parse error", e); }
-      }
-    }
-    
-    // Check saved session — batch all state updates to prevent black screen
-    var savedEmail = localStorage.getItem("nt_email");
-    var savedKeys  = loadKeys();
-
-    if (savedEmail && savedKeys) {
-      // Restore session: fix exchange object reference from stored JSON
-      var restoredCfg = Object.assign({}, savedKeys);
-      if (restoredCfg.exchange && restoredCfg.exchange.name) {
-        var matchedEx = EXCHANGES_LIST.find(function(ex){ return ex.name === restoredCfg.exchange.name; });
-        if (matchedEx) restoredCfg.exchange = matchedEx;
-      }
-      if (restoredCfg.scope && restoredCfg.scope.id) {
-        var matchedScope = MARKET_SCOPES.find(function(s){ return s.id === restoredCfg.scope.id; });
-        if (matchedScope) restoredCfg.scope = matchedScope;
-      }
-      // Set all states in single batch then show dashboard
-      setUser({email:savedEmail, tier:"free", trialExpiry:null});
-      setConfig(restoredCfg);
+    // ── Version check: clear old incompatible localStorage data ──
+    var APP_VERSION = "v2.0";
+    var storedVersion = localStorage.getItem("nt_ver");
+    if (storedVersion !== APP_VERSION) {
+      // Clear old data that may be incompatible
+      try {
+        localStorage.removeItem("nt_cfg");
+        localStorage.removeItem("nt_email");
+        localStorage.removeItem("nt_access_token");
+        localStorage.setItem("nt_ver", APP_VERSION);
+      } catch(e) {}
       setAppReady(true);
-      setScreen("dashboard");
-      // Background: refresh tier from backend
-      fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(savedEmail))
-        .then(function(r){return r.json();})
-        .then(function(data){
-          if(data && data.tier){
-            var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
-                       : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
-            setUser({email:savedEmail, tier:data.tier, trialExpiry:expiry});
-          }
-        }).catch(function(){});
-      return function(){};
-    } else if (savedEmail) {
-      setUser({email:savedEmail, tier:"free", trialExpiry:null});
-      setAppReady(true);
-      setScreen("setup");
-      return function(){};
+      setScreen("login");
+      return;
     }
 
-    // No session: show splash then login
+    try {
+      // Check for magic link callback in URL hash or query
+      var hash = window.location.hash;
+      var search = window.location.search;
+      var hasAuthToken = hash.includes("access_token") || search.includes("access_token")
+                      || hash.includes("type=magiclink") || search.includes("auth=magic");
+
+      if (hasAuthToken) {
+        var params = new URLSearchParams(hash.replace("#","") + "&" + search.replace("?",""));
+        var accessToken = params.get("access_token");
+        if (accessToken) {
+          try {
+            var payload = JSON.parse(atob(accessToken.split(".")[1]));
+            var email = payload.email;
+            if (email) {
+              localStorage.setItem("nt_access_token", accessToken);
+              localStorage.setItem("nt_email", email);
+              setUser({email:email, tier:"free", trialExpiry:null});
+              setAppReady(true);
+              fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(email))
+                .then(function(r){return r.json();})
+                .then(function(data){
+                  if(data && data.tier){
+                    var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
+                               : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
+                    setUser({email:email, tier:data.tier, trialExpiry:expiry});
+                  }
+                }).catch(function(){});
+              window.history.replaceState({}, document.title, window.location.pathname);
+              setScreen("setup");
+              return;
+            }
+          } catch(e) { console.warn("Token parse error", e); }
+        }
+      }
+
+      // Check saved session
+      var savedEmail = localStorage.getItem("nt_email");
+      var savedKeys  = loadKeys();
+
+      if (savedEmail && savedKeys) {
+        var restoredCfg = Object.assign({}, savedKeys);
+        // Fix exchange object reference
+        if (restoredCfg.exchange && restoredCfg.exchange.name) {
+          var matchedEx = EXCHANGES_LIST.find(function(ex){ return ex.name === restoredCfg.exchange.name; });
+          if (matchedEx) restoredCfg.exchange = matchedEx;
+        }
+        // Fix scope object reference
+        if (restoredCfg.scope && restoredCfg.scope.id) {
+          var matchedScope = MARKET_SCOPES.find(function(s){ return s.id === restoredCfg.scope.id; });
+          if (matchedScope) restoredCfg.scope = matchedScope;
+        }
+        setUser({email:savedEmail, tier:"free", trialExpiry:null});
+        setConfig(restoredCfg);
+        setAppReady(true);
+        setScreen("dashboard");
+        fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(savedEmail))
+          .then(function(r){return r.json();})
+          .then(function(data){
+            if(data && data.tier){
+              var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
+                         : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
+              setUser({email:savedEmail, tier:data.tier, trialExpiry:expiry});
+            }
+          }).catch(function(){});
+        return;
+      } else if (savedEmail) {
+        setUser({email:savedEmail, tier:"free", trialExpiry:null});
+        setAppReady(true);
+        setScreen("setup");
+        return;
+      }
+    } catch(e) {
+      // If anything crashes, clear data and show login
+      console.error("Session restore error:", e);
+      try {
+        localStorage.removeItem("nt_cfg");
+        localStorage.removeItem("nt_email");
+        localStorage.removeItem("nt_access_token");
+      } catch(e2) {}
+    }
+
+    // Default: show splash then login
     var t = setTimeout(function(){
       setAppReady(true);
       setScreen("login");
     }, 2500);
     return function(){ clearTimeout(t); };
-  },[]);
+  },[]);;
 
   async function handleLogin(email) {
     // Check demo emails
