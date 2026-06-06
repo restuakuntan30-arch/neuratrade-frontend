@@ -1661,15 +1661,25 @@ function VerifyScreen(props){
   async function resendLink() {
     setResent(false);
     var SUPA_URL  = "https://bgoezzoalgkoivygnoqp.supabase.co";
-    var SUPA_ANON = props.supaAnon || "";
+    var SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnb2V6em9hbGdvaXZ5Z25vcXAiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc0NjM0NDQ1MCwiZXhwIjoyMDYxOTIwNDUwfQ.rHfpXnGvNgH9lE3OtxkNzJ8SyvXfmkJwKvGY0VUzYeA";
     try {
-      await fetch(SUPA_URL + "/auth/v1/otp", {
+      var res = await fetch(SUPA_URL + "/auth/v1/otp", {
         method: "POST",
         headers: { "Content-Type":"application/json", "apikey": SUPA_ANON },
-        body: JSON.stringify({ email: props.email, options: { emailRedirectTo: window.location.origin } }),
+        body: JSON.stringify({ 
+          email: props.email, 
+          options: { emailRedirectTo: window.location.origin } 
+        }),
       });
-      setResent(true);
-    } catch(e) {}
+      if (res.ok) {
+        setResent(true);
+      } else {
+        var err = await res.json();
+        alert("Gagal kirim ulang: " + (err.msg || err.error || "coba lagi"));
+      }
+    } catch(e) {
+      setResent(true); // optimistic
+    }
   }
 
   return(
@@ -3051,6 +3061,22 @@ export default function App() {
       // Check for magic link callback in URL hash or query
       var hash = window.location.hash;
       var search = window.location.search;
+
+      // Handle Supabase error in URL (expired/invalid magic link)
+      if (hash.includes("error=") || search.includes("error=")) {
+        var errParams = new URLSearchParams(hash.replace("#","") + "&" + search.replace("?",""));
+        var errCode = errParams.get("error_code") || "unknown";
+        var errDesc = (errParams.get("error_description") || "Link tidak valid").replace(/\+/g," ");
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setAppReady(true);
+        setScreen("login");
+        // Show error message after short delay
+        setTimeout(function() {
+          alert("❌ " + errDesc + "\n\nSilakan minta magic link baru.");
+        }, 500);
+        return;
+      }
+
       var hasAuthToken = hash.includes("access_token") || search.includes("access_token")
                       || hash.includes("type=magiclink") || search.includes("auth=magic");
 
@@ -3152,7 +3178,7 @@ export default function App() {
       setScreen("verify_demo"); // special demo verify
       return;
     }
-    // Real Supabase magic link via REST API
+    // Real Supabase magic link via REST API  
     var SUPA_URL  = "https://bgoezzoalgkoivygnoqp.supabase.co";
     var SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnb2V6em9hbGdrb2l2eWdub3FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MjY2OTYsImV4cCI6MjA5NjIwMjY5Nn0.J4DMIxoK1gEQ9nr6oAkdzCvBp5VkOhOnNne6PLvh4zY";
     try {
