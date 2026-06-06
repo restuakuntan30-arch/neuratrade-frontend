@@ -16,16 +16,16 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── ADMIN CONFIG — edit sesuai data kamu ─────────────────────
 var ADMIN_QRIS_URL  = "https://ibb.co.com/yFtwBRWp";
-var ADMIN_WA        = "None";
+var ADMIN_WA        = "6282250931638";
 var ADMIN_NAMA      = "NeuraTrade AI";
 var ADMIN_BANK      = [
-  { bank:"BCA",     no:"Tidak Ada", atas:ADMIN_NAMA },
-  { bank:"Mandiri", no:"Tidak Ada", atas:ADMIN_NAMA },
+  { bank:"BCA",     no:"None", atas:ADMIN_NAMA },
+  { bank:"Mandiri", no:"None", atas:ADMIN_NAMA },
 ];
 var ADMIN_EWALLET = [
   { name:"GoPay", no:"0822-5093-1638", color:"#00aad4" },
-  { name:"OVO",   no:"Tidak Ada", color:"#4c2a7e" },
-  { name:"Dana",  no:"Tidak Ada", color:"#118eed" },
+  { name:"OVO",   no:"None", color:"#4c2a7e" },
+  { name:"Dana",  no:"None", color:"#118eed" },
 ];
 // Fix #20 — email demo tidak hardcode di konstanta publik
 var _D = ["demo@neuratrade.ai","test@gmail.com"];
@@ -125,12 +125,14 @@ var MARKET_SCOPES = [
 ];
 
 var EXCHANGES_LIST = [
-  { name:"Binance",    color:"#f0b90b", type:"Crypto",      pro:false },
-  { name:"ByBit",      color:"#f7a600", type:"Futures",     pro:true  },
-  { name:"OKX",        color:"#00b4d8", type:"DeFi/Spot",   pro:true  },
-  { name:"KuCoin",     color:"#00c076", type:"Altcoin",     pro:true  },
-  { name:"Exness",     color:"#00bfa5", type:"Forex/Gold",  pro:true  },
-  { name:"IC Markets", color:"#2962ff", type:"ECN Forex",   pro:true  },
+  { name:"Binance",    color:"#f0b90b", type:"Crypto",      pro:false, cred:"api"  },
+  { name:"ByBit",      color:"#f7a600", type:"Futures",     pro:true,  cred:"api"  },
+  { name:"OKX",        color:"#00b4d8", type:"DeFi/Spot",   pro:true,  cred:"api"  },
+  { name:"KuCoin",     color:"#00c076", type:"Altcoin",     pro:true,  cred:"api"  },
+  { name:"Exness",     color:"#00bfa5", type:"Forex/Gold",  pro:true,  cred:"mt5"  },
+  { name:"IC Markets", color:"#2962ff", type:"ECN Forex",   pro:true,  cred:"mt5"  },
+  { name:"XM",         color:"#e53935", type:"Forex",       pro:true,  cred:"mt5"  },
+  { name:"FBS",        color:"#ff6d00", type:"Forex",       pro:true,  cred:"mt5"  },
 ];
 
 // ─── INDICATORS ───────────────────────────────────────────────
@@ -1107,6 +1109,9 @@ function SetupScreen(props) {
   var [bal,        setBal]        = useState("5000");
   var [apiKey,     setApiKey]     = useState("");
   var [secret,     setSecret]     = useState("");
+  var [mt5Login,   setMt5Login]   = useState("");
+  var [mt5Server,  setMt5Server]  = useState("");
+  var [mt5Pass,    setMt5Pass]    = useState("");
   var [anthropicKey,setAnthropicKey] = useState("");
   var [aiModel,    setAiModel]    = useState(AI_PROVIDERS[0].id);
   var [selEx,      setSelEx]      = useState(EXCHANGES_LIST[0]);
@@ -1118,19 +1123,29 @@ function SetupScreen(props) {
     var b = parseFloat(bal);
     if (!b || b < 10) { setErr("Modal minimal $10"); return; }
     if (mode === "real") {
-      if (!apiKey.trim())    { setErr("API Key wajib diisi untuk mode Real Trading"); return; }
-      if (!secret.trim())    { setErr("Secret Key wajib diisi untuk mode Real Trading"); return; }
+      var isMt5 = selEx.cred === "mt5";
+      if (isMt5) {
+        if (!mt5Login.trim())  { setErr("Login (nomor akun) wajib diisi"); return; }
+        if (!mt5Server.trim()) { setErr("Server broker wajib diisi"); return; }
+        if (!mt5Pass.trim())   { setErr("Kata sandi trading wajib diisi"); return; }
+      } else {
+        if (!apiKey.trim())    { setErr("API Key wajib diisi untuk mode Real Trading"); return; }
+        if (!secret.trim())    { setErr("Secret Key wajib diisi untuk mode Real Trading"); return; }
+      }
     }
     setErr("");
     onDone({
-      mode:        mode,
-      balance:     b,
-      apiKey:      mode === "real" ? apiKey.trim() : "",
-      secretKey:   mode === "real" ? secret.trim() : "",
+      mode:         mode,
+      balance:      b,
+      apiKey:       mode === "real" ? apiKey.trim() : "",
+      secretKey:    mode === "real" ? secret.trim() : "",
+      mt5Login:     mode === "real" ? mt5Login.trim() : "",
+      mt5Server:    mode === "real" ? mt5Server.trim() : "",
+      mt5Password:  mode === "real" ? mt5Pass.trim() : "",
       anthropicKey: anthropicKey.trim(),
-      aiModel:     aiModel,
-      exchange:    selEx,
-      scope:       scope,
+      aiModel:      aiModel,
+      exchange:     selEx,
+      scope:        scope,
     });
   }
 
@@ -1246,38 +1261,93 @@ function SetupScreen(props) {
           </div>
         </div>
 
-        {/* API Keys — REQUIRED for real, optional for demo */}
-        <div style={{ marginBottom:14,background:isReal?"rgba(0,30,15,.3)":"rgba(0,20,40,.2)",border:"1px solid "+(isReal?"#003a18":"#0a1428"),borderRadius:9,padding:12 }}>
-          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
-            <div style={{ fontSize:9,color:isReal?"#2a7a50":"#2a4a7a",letterSpacing:1.5,fontWeight:700 }}>
-              {isReal ? "⚡ API KEY EXCHANGE (WAJIB)" : "API KEY EXCHANGE (Opsional)"}
+        {/* Credential section — dynamic based on exchange type */}
+        {(function(){
+          var isMt5 = selEx.cred === "mt5";
+          return (
+            <div style={{ marginBottom:14,background:isReal?"rgba(0,30,15,.3)":"rgba(0,20,40,.2)",border:"1px solid "+(isReal?"#003a18":"#0a1428"),borderRadius:9,padding:12 }}>
+              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10 }}>
+                <div style={{ fontSize:9,color:isReal?"#2a7a50":"#2a4a7a",letterSpacing:1.5,fontWeight:700 }}>
+                  {isReal
+                    ? (isMt5 ? "⚡ AKUN MT4/MT5 (WAJIB)" : "⚡ API KEY EXCHANGE (WAJIB)")
+                    : (isMt5 ? "AKUN MT4/MT5 (Opsional)" : "API KEY EXCHANGE (Opsional)")
+                  }
+                </div>
+                {isReal && <span style={{ fontSize:8,color:"#ff4d6d",background:"rgba(80,0,0,.2)",border:"1px solid #5a0000",borderRadius:3,padding:"1px 7px" }}>REQUIRED</span>}
+              </div>
+
+              {isMt5 ? (
+                /* MT5/MT4 Login fields */
+                <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+                  <div>
+                    <div style={{ fontSize:8,color:"#1e3a60",marginBottom:4,letterSpacing:1 }}>LOGIN (NOMOR AKUN)</div>
+                    <input value={mt5Login} onChange={function(e){ setMt5Login(e.target.value); }}
+                      type="number" placeholder="Contoh: 12345678"
+                      style={{ width:"100%",background:"#020508",border:"1px solid "+(isReal&&!mt5Login?"#5a0000":"#0a1428"),borderRadius:7,padding:"10px 12px",color:"#cce0ff",fontSize:13,fontFamily:"'Share Tech Mono',monospace",outline:"none" }}/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:8,color:"#1e3a60",marginBottom:4,letterSpacing:1 }}>SERVER</div>
+                    <input value={mt5Server} onChange={function(e){ setMt5Server(e.target.value); }}
+                      placeholder={"Contoh: " + (selEx.name==="Exness"?"Exness-Real3":selEx.name==="IC Markets"?"ICMarkets-Live01":selEx.name+"-Real")}
+                      style={{ width:"100%",background:"#020508",border:"1px solid "+(isReal&&!mt5Server?"#5a0000":"#0a1428"),borderRadius:7,padding:"10px 12px",color:"#cce0ff",fontSize:12,fontFamily:"'Share Tech Mono',monospace",outline:"none" }}/>
+                    <div style={{ fontSize:8,color:"#1e3a60",marginTop:3 }}>
+                      Lihat di MT5: File → Login to Trade Account → Server
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:8,color:"#1e3a60",marginBottom:4,letterSpacing:1 }}>KATA SANDI TRADING</div>
+                    <div style={{ position:"relative" }}>
+                      <input value={mt5Pass} onChange={function(e){ setMt5Pass(e.target.value); }}
+                        type={apiVisible?"text":"password"}
+                        placeholder="Kata sandi master (bukan investor)"
+                        style={{ width:"100%",background:"#020508",border:"1px solid "+(isReal&&!mt5Pass?"#5a0000":"#0a1428"),borderRadius:7,padding:"10px 12px",paddingRight:40,color:"#cce0ff",fontSize:12,fontFamily:"'Share Tech Mono',monospace",outline:"none" }}/>
+                      <button onClick={function(){ setApiVisible(!apiVisible); }}
+                        style={{ position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:"#2a4a70",cursor:"pointer",fontSize:16,padding:4 }}>
+                        {apiVisible?"🙈":"👁"}
+                      </button>
+                    </div>
+                    <div style={{ fontSize:8,color:"#aa5020",marginTop:3 }}>
+                      ⚠️ Gunakan kata sandi Master, BUKAN kata sandi Investor
+                    </div>
+                  </div>
+                  <div style={{ background:"rgba(0,30,15,.3)",border:"1px solid #002a10",borderRadius:6,padding:"8px 10px" }}>
+                    <div style={{ fontSize:8.5,color:"#2a5a40",lineHeight:1.8 }}>
+                      📍 <strong>Cara cek Server {selEx.name}:</strong><br/>
+                      Buka MT5 → File → Login → lihat nama server kamu
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* API Key fields for crypto exchanges */
+                <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+                  <div>
+                    <div style={{ fontSize:8,color:"#1e3a60",marginBottom:4,letterSpacing:1 }}>API KEY</div>
+                    <input value={apiKey} onChange={function(e){ setApiKey(e.target.value); }}
+                      placeholder={selEx.name + " API Key"}
+                      style={{ width:"100%",background:"#020508",border:"1px solid "+(isReal&&!apiKey?"#5a0000":"#0a1428"),borderRadius:7,padding:"10px 12px",color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",outline:"none" }}/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:8,color:"#1e3a60",marginBottom:4,letterSpacing:1 }}>SECRET KEY</div>
+                    <div style={{ position:"relative" }}>
+                      <input value={secret} onChange={function(e){ setSecret(e.target.value); }}
+                        type={apiVisible?"text":"password"}
+                        placeholder={selEx.name + " Secret Key"}
+                        style={{ width:"100%",background:"#020508",border:"1px solid "+(isReal&&!secret?"#5a0000":"#0a1428"),borderRadius:7,padding:"10px 12px",paddingRight:40,color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",outline:"none" }}/>
+                      <button onClick={function(){ setApiVisible(!apiVisible); }}
+                        style={{ position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:"#2a4a70",cursor:"pointer",fontSize:16,padding:4 }}>
+                        {apiVisible?"🙈":"👁"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ fontSize:8.5,color:"#1e3a60",marginTop:8,lineHeight:1.7 }}>
+                🔒 Kredensial disimpan hanya di device kamu — tidak dikirim ke server kami.
+              </div>
             </div>
-            {isReal && <span style={{ fontSize:8,color:"#ff4d6d",background:"rgba(80,0,0,.2)",border:"1px solid #5a0000",borderRadius:3,padding:"1px 7px" }}>REQUIRED</span>}
-          </div>
-          <input value={apiKey} onChange={function(e){ setApiKey(e.target.value); }}
-            placeholder={selEx.name + " API Key"}
-            style={{ width:"100%",background:"#020508",border:"1px solid "+(isReal&&!apiKey?"#5a0000":"#0a1428"),borderRadius:7,padding:"9px 12px",color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",marginBottom:7,outline:"none" }}/>
-          <div style={{ position:"relative" }}>
-            <input value={secret} onChange={function(e){ setSecret(e.target.value); }}
-              type={apiVisible?"text":"password"}
-              placeholder={selEx.name + " Secret Key"}
-              style={{ width:"100%",background:"#020508",border:"1px solid "+(isReal&&!secret?"#5a0000":"#0a1428"),borderRadius:7,padding:"9px 12px",paddingRight:40,color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",outline:"none" }}/>
-            <button onClick={function(){ setApiVisible(!apiVisible); }}
-              style={{ position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:"#2a4a70",cursor:"pointer",fontSize:14,padding:4 }}>
-              {apiVisible?"🙈":"👁"}
-            </button>
-          </div>
-          {isReal ? (
-            <div style={{ fontSize:8.5,color:"#2a5a40",marginTop:6,lineHeight:1.7 }}>
-              API Key digunakan untuk eksekusi order nyata ke {selEx.name}.<br/>
-              Key disimpan hanya di memory device kamu — tidak dikirim ke server kami.
-            </div>
-          ) : (
-            <div style={{ fontSize:8.5,color:"#1e3a60",marginTop:6 }}>
-              Kosongkan untuk paper trading. Isi jika ingin coba koneksi real.
-            </div>
-          )}
-        </div>
+          );
+        })()}
 
         {/* AI Provider */}
         <div style={{ marginBottom:14,background:"rgba(60,20,80,.15)",border:"1px solid #3a1a5a",borderRadius:9,padding:12 }}>
