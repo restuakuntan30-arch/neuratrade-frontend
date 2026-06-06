@@ -19,13 +19,13 @@ var ADMIN_QRIS_URL  = "https://ibb.co.com/yFtwBRWp";
 var ADMIN_WA        = "6282250931638";
 var ADMIN_NAMA      = "NeuraTrade AI";
 var ADMIN_BANK      = [
-  { bank:"BCA",     no:"None", atas:ADMIN_NAMA },
-  { bank:"Mandiri", no:"None", atas:ADMIN_NAMA },
+  { bank:"BCA",     no:"none", atas:ADMIN_NAMA },
+  { bank:"Mandiri", no:"none", atas:ADMIN_NAMA },
 ];
 var ADMIN_EWALLET = [
   { name:"GoPay", no:"0822-5093-1638", color:"#00aad4" },
-  { name:"OVO",   no:"None", color:"#4c2a7e" },
-  { name:"Dana",  no:"None", color:"#118eed" },
+  { name:"OVO",   no:"none", color:"#4c2a7e" },
+  { name:"Dana",  no:"none", color:"#118eed" },
 ];
 // Fix #20 — email demo tidak hardcode di konstanta publik
 var _D = ["demo@neuratrade.ai","test@gmail.com"];
@@ -1724,6 +1724,58 @@ function Dashboard(props) {
   var [showUpg,  setShowUpg]  = useState(false);
   var [confirm,  setConfirm]  = useState(null);    // Fix #17 #18 — confirm dialogs
   var [aiLimit,  setAiLimit]  = useState({count:0,date:new Date().toDateString()}); // Fix #1
+  var [realBalance, setRealBalance] = useState(null); // real balance from exchange
+  var [balLoading,  setBalLoading]  = useState(false);
+  var [balError,    setBalError]    = useState("");
+
+  // ── Fetch real balance from exchange via backend ──────
+  var fetchRealBalance = useCallback(async function() {
+    if (!config || config.mode !== "real") return;
+    if (!config.apiKey || !config.secretKey) return;
+    setBalLoading(true);
+    setBalError("");
+    try {
+      var BACKEND  = "https://neuratrade-backend.onrender.com";
+      var exName   = (config.exchange && config.exchange.name ? config.exchange.name : "binance").toLowerCase();
+      var res = await fetch(BACKEND + "/api/balance", {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "x-api-key":     config.apiKey,
+          "x-secret":      config.secretKey,
+          "x-exchange":    exName,
+        },
+        body: JSON.stringify({}),
+      });
+      var data = await res.json();
+      if (data.error) {
+        setBalError(data.error);
+      } else {
+        setRealBalance(data);
+        // Update portfolio dengan saldo real
+        var realUsd = data.totalUsdt || 0;
+        setPortfolio(function(prev) {
+          return Object.assign({}, prev, {
+            bal:     realUsd,
+            initBal: prev.initBal === config.balance ? realUsd : prev.initBal,
+          });
+        });
+        setEqHist(function(prev) {
+          return prev.concat([{ time: Date.now(), bal: realUsd }]);
+        });
+      }
+    } catch(e) {
+      setBalError("Gagal ambil saldo: " + e.message);
+    }
+    setBalLoading(false);
+  }, [config]);
+
+  // Auto-fetch balance on mount and every 30 seconds
+  useEffect(function() {
+    fetchRealBalance();
+    var t = setInterval(fetchRealBalance, 30000);
+    return function() { clearInterval(t); };
+  }, [fetchRealBalance]);
 
   // Fix #13 — use ref for availPairs to avoid stale closure
   var scopedCats   = scope ? scope.cats : ["CRYPTO","METALS","FOREX"];
@@ -2270,19 +2322,58 @@ function Dashboard(props) {
         {/* TRADE TAB */}
         {navTab==="trade"&&(
           <div style={{height:"100%",overflow:"auto",padding:"10px 12px"}}>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5,marginBottom:10}}>
-              {[
-                {l:"SALDO",v:"$"+portfolio.bal.toLocaleString(undefined,{maximumFractionDigits:0}),c:"#7ab0ff"},
-                {l:"PnL",v:(pnlPos?"+":"")+portfolio.pnl.toFixed(2),c:pnlPos?"#00e5a0":"#ff4d6d"},
-                {l:"WIN RATE",v:portfolio.winRate+"%",c:"#ffd93d"},
-                {l:"TRADES",v:portfolio.totalTrades,c:"#7c6fff"},
-                {l:"AI CALLS",v:tokenUsage.calls+" (~$"+tokenUsage.estimatedCost+")",c:"#b06aff"},
-              ].map(function(s){
-                return(<div key={s.l} style={{background:"rgba(2,5,16,.96)",border:"1px solid #080e22",borderRadius:8,padding:"8px 9px"}}>
-                  <div style={{fontSize:7,color:"#152040",letterSpacing:2}}>{s.l}</div>
-                  <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,color:s.c,marginTop:2}}>{s.v}</div>
-                </div>);
-              })}
+            <div style={{marginBottom:10}}>
+              {/* Real balance banner for real mode */}
+              {config && config.mode === "real" && (
+                <div style={{background:"rgba(0,30,15,.4)",border:"1px solid "+(balError?"#5a0000":"#003a18"),borderRadius:9,padding:"8px 12px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:7.5,color:"#1e5a30",letterSpacing:2,marginBottom:3}}>SALDO REAL EXCHANGE</div>
+                    {balLoading ? (
+                      <div style={{fontSize:11,color:"#3a5a80"}}>Mengambil saldo...</div>
+                    ) : balError ? (
+                      <div style={{fontSize:9.5,color:"#ff4d6d",lineHeight:1.6}}>{balError}</div>
+                    ) : realBalance ? (
+                      <div>
+                        <div style={{fontFamily:"'Orbitron',monospace",fontSize:20,color:"#00e5a0",fontWeight:900}}>
+                          ${realBalance.totalUsdt.toLocaleString(undefined,{maximumFractionDigits:2,minimumFractionDigits:2})}
+                        </div>
+                        <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap"}}>
+                          {(realBalance.balances||[]).slice(0,5).map(function(b){
+                            return b.free > 0 && (
+                              <span key={b.asset} style={{fontSize:8,color:"#2a5a40",background:"rgba(0,60,30,.2)",border:"1px solid #003a18",borderRadius:4,padding:"1px 7px"}}>
+                                {b.asset}: {b.free < 1 ? b.free.toFixed(6) : b.free.toLocaleString(undefined,{maximumFractionDigits:2})}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{fontSize:10,color:"#1e3a60"}}>Belum terhubung</div>
+                    )}
+                  </div>
+                  <button onClick={fetchRealBalance} disabled={balLoading}
+                    style={{background:"rgba(0,100,50,.2)",border:"1px solid #003a18",borderRadius:6,padding:"6px 10px",color:"#00e5a0",cursor:balLoading?"default":"pointer",fontSize:9,flexShrink:0,fontFamily:"'Share Tech Mono',monospace"}}>
+                    {balLoading?"...":"🔄"}
+                  </button>
+                </div>
+              )}
+              {/* Stats row */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
+                {[
+                  {l:"SALDO",v:"$"+(config&&config.mode==="real"&&realBalance?realBalance.totalUsdt:portfolio.bal).toLocaleString(undefined,{maximumFractionDigits:0}),c:"#7ab0ff"},
+                  {l:"PnL",v:(pnlPos?"+":"")+portfolio.pnl.toFixed(2),c:pnlPos?"#00e5a0":"#ff4d6d"},
+                  {l:"WIN RATE",v:portfolio.winRate+"%",c:"#ffd93d"},
+                  {l:"TRADES",v:portfolio.totalTrades,c:"#7c6fff"},
+                  {l:"AI CALLS",v:tokenUsage.calls,c:"#b06aff"},
+                ].map(function(s){
+                  return(
+                    <div key={s.l} style={{background:"rgba(2,5,16,.96)",border:"1px solid #080e22",borderRadius:7,padding:"7px 6px",textAlign:"center"}}>
+                      <div style={{fontSize:7,color:"#152040",letterSpacing:1.5}}>{s.l}</div>
+                      <div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,color:s.c,marginTop:3}}>{s.v}</div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Scope button */}
@@ -2739,7 +2830,8 @@ export default function App() {
   var [user,    setUser]    = useState(null);
   var [pending, setPending] = useState("");
   var [config,  setConfig]  = useState(null);
-  var [showDisclaimer, setShowDisclaimer] = useState(false); // Fix 12
+  var [showDisclaimer, setShowDisclaimer] = useState(false);
+  var [appReady, setAppReady] = useState(false); // prevents black screen on refresh
 
   useEffect(function(){
     // Check for magic link callback in URL hash or query
@@ -2762,6 +2854,7 @@ export default function App() {
             localStorage.setItem("nt_access_token", accessToken);
             localStorage.setItem("nt_email", email);
             setUser({email:email, tier:"free", trialExpiry:null});
+            setAppReady(true);
             // Load real tier from backend
             fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(email))
               .then(function(r){return r.json();})
@@ -2781,15 +2874,27 @@ export default function App() {
       }
     }
     
-    // Check saved session — restore fully if config exists
+    // Check saved session — batch all state updates to prevent black screen
     var savedEmail = localStorage.getItem("nt_email");
     var savedKeys  = loadKeys();
+
     if (savedEmail && savedKeys) {
-      // Restore user and config immediately → go to dashboard
+      // Restore session: fix exchange object reference from stored JSON
+      var restoredCfg = Object.assign({}, savedKeys);
+      if (restoredCfg.exchange && restoredCfg.exchange.name) {
+        var matchedEx = EXCHANGES_LIST.find(function(ex){ return ex.name === restoredCfg.exchange.name; });
+        if (matchedEx) restoredCfg.exchange = matchedEx;
+      }
+      if (restoredCfg.scope && restoredCfg.scope.id) {
+        var matchedScope = MARKET_SCOPES.find(function(s){ return s.id === restoredCfg.scope.id; });
+        if (matchedScope) restoredCfg.scope = matchedScope;
+      }
+      // Set all states in single batch then show dashboard
       setUser({email:savedEmail, tier:"free", trialExpiry:null});
-      setConfig(savedKeys);
+      setConfig(restoredCfg);
+      setAppReady(true);
       setScreen("dashboard");
-      // Then refresh tier from backend in background
+      // Background: refresh tier from backend
       fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(savedEmail))
         .then(function(r){return r.json();})
         .then(function(data){
@@ -2801,23 +2906,18 @@ export default function App() {
         }).catch(function(){});
       return function(){};
     } else if (savedEmail) {
-      // Have email but no config → go to setup
       setUser({email:savedEmail, tier:"free", trialExpiry:null});
-      fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(savedEmail))
-        .then(function(r){return r.json();})
-        .then(function(data){
-          if(data && data.tier){
-            var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
-                       : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
-            setUser({email:savedEmail, tier:data.tier, trialExpiry:expiry});
-          }
-        }).catch(function(){});
+      setAppReady(true);
       setScreen("setup");
       return function(){};
     }
 
-    var t=setTimeout(function(){ setScreen("login"); },2500);
-    return function(){clearTimeout(t);};
+    // No session: show splash then login
+    var t = setTimeout(function(){
+      setAppReady(true);
+      setScreen("login");
+    }, 2500);
+    return function(){ clearTimeout(t); };
   },[]);
 
   async function handleLogin(email) {
@@ -2895,10 +2995,32 @@ export default function App() {
     clearKeys();
     localStorage.removeItem("nt_email");
     localStorage.removeItem("nt_access_token");
-    setUser(null);setConfig(null);setScreen("login");
+    setUser(null);
+    setConfig(null);
+    setAppReady(true); // keep ready so login screen shows
+    setScreen("login");
   }
 
   var isPro = user && user.tier !== "free";
+
+  // ── Prevent black screen on refresh ──────────────────────────
+  if (!appReady) {
+    return (
+      <div style={{minHeight:"100vh",background:"#020810",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+        <div style={{fontFamily:"'Orbitron',monospace",fontSize:20,fontWeight:900,letterSpacing:2}}>
+          <span style={{background:"linear-gradient(135deg,#0080ff,#00e5a0)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>NEURA</span>
+          <span style={{background:"linear-gradient(135deg,#ff4d6d,#ff8f6b)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TRADE</span>
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:8}}>
+          {[0,1,2].map(function(i){
+            return <div key={i} style={{width:9,height:9,borderRadius:"50%",background:"#5a9fff",animation:"pulse 1.2s "+(i*0.3)+"s infinite"}}/>;
+          })}
+        </div>
+        <div style={{fontSize:9,color:"#1e3a60",letterSpacing:2,marginTop:4}}>MEMUAT...</div>
+        <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}"}</style>
+      </div>
+    );
+  }
 
   return(
     <div style={{fontFamily:"'Share Tech Mono',monospace"}}>
