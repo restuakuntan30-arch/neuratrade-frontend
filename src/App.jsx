@@ -24,7 +24,7 @@ var ADMIN_BANK      = [
 ];
 var ADMIN_EWALLET = [
   { name:"GoPay", no:"0822-5093-1638", color:"#00aad4" },
-  { name:"OVO",   no:"none", color:"#4c2a7e" },
+  { name:"OVO",   no:"0", color:"#4c2a7e" },
   { name:"Dana",  no:"none", color:"#118eed" },
 ];
 // Fix #20 — email demo tidak hardcode di konstanta publik
