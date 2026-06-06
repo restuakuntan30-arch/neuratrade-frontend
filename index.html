@@ -2,13 +2,122 @@
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#020810" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
     <link rel="manifest" href="/manifest.json" />
     <title>NeuraTrade AI</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body {
+        height: 100%;
+        background: #020810;
+        overflow: hidden;
+        -webkit-overflow-scrolling: touch;
+      }
+      #root { height: 100%; }
+      /* Fallback loading — tampil sebelum React mount */
+      #fallback {
+        position: fixed;
+        inset: 0;
+        background: #020810;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        font-family: monospace;
+        z-index: 9999;
+      }
+      #fallback .logo {
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: 3px;
+      }
+      #fallback .logo span:first-child { color: #00e5a0; }
+      #fallback .logo span:last-child  { color: #ff4d6d; }
+      #fallback .dots {
+        display: flex; gap: 8px;
+      }
+      #fallback .dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: #5a9fff;
+        animation: nt-pulse 1.2s infinite;
+      }
+      #fallback .dot:nth-child(2) { animation-delay: .3s; }
+      #fallback .dot:nth-child(3) { animation-delay: .6s; }
+      @keyframes nt-pulse {
+        0%,100% { opacity: 1; }
+        50%      { opacity: .2; }
+      }
+      #fallback .sub {
+        font-size: 9px;
+        color: #1e3a60;
+        letter-spacing: 2px;
+      }
+      #fallback .reset-btn {
+        display: none;
+        margin-top: 8px;
+        background: #003ab0;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 20px;
+        color: #fff;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: monospace;
+      }
+    </style>
   </head>
-  <body style="margin:0;background:#020810;">
+  <body>
+    <!-- Fallback loading screen (tersembunyi setelah React mount) -->
+    <div id="fallback">
+      <div class="logo">
+        <span>NEURA</span><span>TRADE</span>
+      </div>
+      <div class="dots">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
+      <div class="sub">MEMUAT APLIKASI...</div>
+      <button class="reset-btn" id="reset-btn" onclick="localStorage.clear();location.reload();">
+        Reset &amp; Muat Ulang
+      </button>
+    </div>
+
     <div id="root"></div>
+
+    <script>
+      // Auto-show reset button after 8 seconds if React belum mount
+      var _t = setTimeout(function() {
+        var btn = document.getElementById('reset-btn');
+        if (btn && document.getElementById('fallback').style.display !== 'none') {
+          btn.style.display = 'block';
+        }
+      }, 8000);
+
+      // Sembunyikan fallback setelah React mount
+      var _obs = new MutationObserver(function() {
+        var root = document.getElementById('root');
+        if (root && root.children.length > 0) {
+          clearTimeout(_t);
+          var fb = document.getElementById('fallback');
+          if (fb) {
+            fb.style.transition = 'opacity .3s';
+            fb.style.opacity = '0';
+            setTimeout(function(){ fb.style.display = 'none'; }, 300);
+          }
+          _obs.disconnect();
+        }
+      });
+      _obs.observe(document.getElementById('root'), { childList: true });
+    </script>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
