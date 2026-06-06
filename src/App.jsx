@@ -3273,7 +3273,7 @@ export default function App() {
   }
 
   return(
-    <div style={{fontFamily:"'Share Tech Mono',monospace",position:"fixed",inset:0,overflow:"hidden",background:"#020810"}}>
+    <div style={{fontFamily:"'Share Tech Mono',monospace",position:"fixed",inset:0,background:"#020810"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -3286,7 +3286,7 @@ export default function App() {
         input:focus{outline:none;border-color:#0050d0!important}
         input[type=range]{accent-color:#0060e0}
         button:active{transform:scale(.97)}
-        html,body{height:100%;margin:0;padding:0}
+        html{height:100%}body{height:100%;margin:0}
         *{-webkit-tap-highlight-color:transparent}
         canvas{touch-action:none}
         
