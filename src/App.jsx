@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 //  NEURATRADE v5 — All 20 Issues Fixed
@@ -24,7 +24,7 @@ var ADMIN_BANK      = [
 ];
 var ADMIN_EWALLET = [
   { name:"GoPay", no:"0822-5093-1638", color:"#00aad4" },
-  { name:"OVO",   no:"0", color:"#4c2a7e" },
+  { name:"OVO",   no:"none", color:"#4c2a7e" },
   { name:"Dana",  no:"none", color:"#118eed" },
 ];
 // Fix #20 — email demo tidak hardcode di konstanta publik
@@ -515,62 +515,231 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
 
 // ─── CANDLE CHART — supports real OHLC from Binance ──────────
 function CandleChart(props) {
-  // ohlc: [{o,h,l,c}] from Binance klines (preferred)
-  // history: [price, price, ...] fallback for simulation
-  var ohlc = props.ohlc || null;
-  var history = props.history || [];
-  var h = props.h || 140;
+  var ohlc     = props.ohlc || [];
+  var history  = props.history || [];
+  var h        = props.h || 280;
+  var pair     = props.pair || "BTC/USDT";
+  var livePrice= props.livePrice || 0;
+  var canvasRef = useRef(null);
+  var [hoverIdx, setHoverIdx] = useState(null);
+
+  // Build candles from OHLC or history
   var candles = [];
   if (ohlc && ohlc.length > 4) {
-    candles = ohlc.slice(-70);
+    candles = ohlc.slice(-90);
   } else if (history.length > 4) {
-    var raw = history.slice(-70);
-    var cs = Math.max(1, Math.floor(raw.length / 48));
-    for (var i = 0; i < raw.length; i += cs) {
-      var ch = raw.slice(i, i + cs);
-      candles.push({ o: ch[0], c: ch[ch.length-1], h: Math.max.apply(null,ch), l: Math.min.apply(null,ch) });
+    var raw = history.slice(-90);
+    candles = raw.map(function(c, i) {
+      var prev = raw[i-1] || c;
+      var chg = (c - prev) * (0.3 + Math.random() * 0.4);
+      return { o:prev, h:Math.max(prev,c)+Math.abs(chg)*0.5, l:Math.min(prev,c)-Math.abs(chg)*0.5, c:c, v:Math.random()*1000 };
+    });
+  }
+
+  useEffect(function() {
+    var cv = canvasRef.current;
+    if (!cv || candles.length < 2) return;
+    var dpr = window.devicePixelRatio || 1;
+    var W = cv.offsetWidth;
+    var H = h;
+    cv.width  = W * dpr;
+    cv.height = H * dpr;
+    var ctx = cv.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    var PAD_LEFT = 8, PAD_RIGHT = 64, PAD_TOP = 24, PAD_BOTTOM = 40;
+    var chartW = W - PAD_LEFT - PAD_RIGHT;
+    var chartH = H - PAD_TOP - PAD_BOTTOM - 50; // 50px for volume
+
+    var highs = candles.map(function(c){return c.h;});
+    var lows  = candles.map(function(c){return c.l;});
+    var maxP = Math.max.apply(null, highs);
+    var minP = Math.min.apply(null, lows);
+    var priceRange = maxP - minP || 1;
+    var maxV = Math.max.apply(null, candles.map(function(c){return c.v||0;})) || 1;
+
+    function px(price) { return PAD_TOP + chartH - ((price - minP) / priceRange * chartH); }
+    function candleX(i) { return PAD_LEFT + (i / candles.length) * chartW; }
+    var candleW = Math.max(2, chartW / candles.length - 1);
+
+    // ── Background ─────────────────────────────────────────
+    ctx.fillStyle = "#060d1a";
+    ctx.fillRect(0, 0, W, H);
+
+    // ── Grid lines ─────────────────────────────────────────
+    ctx.strokeStyle = "#0d1e36";
+    ctx.lineWidth = 1;
+    var priceStep = priceRange / 5;
+    for (var gi = 0; gi <= 5; gi++) {
+      var gPrice = minP + priceStep * gi;
+      var gy = px(gPrice);
+      ctx.beginPath(); ctx.moveTo(PAD_LEFT, gy); ctx.lineTo(W - PAD_RIGHT, gy); ctx.stroke();
+      // Price labels
+      ctx.fillStyle = "#2a4a70";
+      ctx.font = "9px 'Share Tech Mono',monospace";
+      ctx.textAlign = "left";
+      var label = gPrice >= 1000 ? gPrice.toFixed(0) : gPrice >= 10 ? gPrice.toFixed(2) : gPrice.toFixed(4);
+      ctx.fillText(label, W - PAD_RIGHT + 4, gy + 3);
     }
+    // Vertical grid
+    var vStep = Math.max(1, Math.floor(candles.length / 6));
+    for (var vi = 0; vi < candles.length; vi += vStep) {
+      var vx = candleX(vi) + candleW/2;
+      ctx.strokeStyle = "#0d1e36";
+      ctx.beginPath(); ctx.moveTo(vx, PAD_TOP); ctx.lineTo(vx, PAD_TOP + chartH); ctx.stroke();
+    }
+
+    // ── MA lines ───────────────────────────────────────────
+    function drawMA(period, color, dash) {
+      if (candles.length < period) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash(dash || []);
+      ctx.beginPath();
+      for (var mi = period - 1; mi < candles.length; mi++) {
+        var sum = 0;
+        for (var mj = 0; mj < period; mj++) sum += candles[mi - mj].c;
+        var maVal = sum / period;
+        var mx = candleX(mi) + candleW/2;
+        var my = px(maVal);
+        if (mi === period - 1) ctx.moveTo(mx, my);
+        else ctx.lineTo(mx, my);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    drawMA(7,  "#ffd93d88");
+    drawMA(25, "#00e5a088");
+    drawMA(50, "#b06aff88", [4,3]);
+
+    // ── Candles ────────────────────────────────────────────
+    candles.forEach(function(c, i) {
+      var bull = c.c >= c.o;
+      var bodyColor = bull ? "#00e5a0" : "#ff4d6d";
+      var x = candleX(i);
+      var cx = x + candleW / 2;
+      // Wick
+      ctx.strokeStyle = bull ? "#00b07888" : "#cc334488";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, px(c.h));
+      ctx.lineTo(cx, px(c.l));
+      ctx.stroke();
+      // Body
+      var bodyTop = px(Math.max(c.o, c.c));
+      var bodyBot = px(Math.min(c.o, c.c));
+      var bodyH = Math.max(1, bodyBot - bodyTop);
+      ctx.fillStyle = i === hoverIdx ? (bull ? "#00e5a0" : "#ff4d6d") : (bull ? "#00e5a040" : "#ff4d6d40");
+      ctx.strokeStyle = bodyColor;
+      ctx.lineWidth = 1;
+      ctx.fillRect(x, bodyTop, candleW, bodyH);
+      ctx.strokeRect(x, bodyTop, candleW, bodyH);
+    });
+
+    // ── Volume bars ────────────────────────────────────────
+    var volTop = PAD_TOP + chartH + 6;
+    var volH   = 36;
+    candles.forEach(function(c, i) {
+      var bull = c.c >= c.o;
+      var vBarH = ((c.v || 0) / maxV) * volH;
+      ctx.fillStyle = bull ? "#00e5a030" : "#ff4d6d30";
+      ctx.fillRect(candleX(i), volTop + volH - vBarH, candleW, vBarH);
+    });
+    ctx.fillStyle = "#1a2a40";
+    ctx.font = "8px 'Share Tech Mono',monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("VOL", PAD_LEFT, volTop + 9);
+
+    // ── Live price line ────────────────────────────────────
+    if (livePrice > 0) {
+      var livePY = px(livePrice);
+      if (livePY > PAD_TOP && livePY < PAD_TOP + chartH) {
+        ctx.strokeStyle = "#ffd93d";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(PAD_LEFT, livePY); ctx.lineTo(W - PAD_RIGHT, livePY); ctx.stroke();
+        ctx.setLineDash([]);
+        // Price tag
+        ctx.fillStyle = "#ffd93d";
+        ctx.fillRect(W - PAD_RIGHT, livePY - 8, PAD_RIGHT, 16);
+        ctx.fillStyle = "#020810";
+        ctx.font = "bold 9px 'Share Tech Mono',monospace";
+        ctx.textAlign = "left";
+        var liveLabel = livePrice >= 1000 ? livePrice.toFixed(1) : livePrice.toFixed(4);
+        ctx.fillText(liveLabel, W - PAD_RIGHT + 3, livePY + 3);
+      }
+    }
+
+    // ── Hover crosshair ────────────────────────────────────
+    if (hoverIdx !== null && candles[hoverIdx]) {
+      var hc = candles[hoverIdx];
+      var hx = candleX(hoverIdx) + candleW/2;
+      var hy = px(hc.c);
+      ctx.strokeStyle = "#4a6aaa44";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(hx, PAD_TOP); ctx.lineTo(hx, PAD_TOP+chartH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(PAD_LEFT, hy); ctx.lineTo(W-PAD_RIGHT, hy); ctx.stroke();
+      ctx.setLineDash([]);
+      // Tooltip
+      var bull = hc.c >= hc.o;
+      var tipX = hx > W/2 ? hx - 110 : hx + 8;
+      ctx.fillStyle = "rgba(6,13,26,.95)";
+      ctx.strokeStyle = bull ? "#00e5a0" : "#ff4d6d";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(tipX, PAD_TOP+4, 100, 72, 5) : ctx.rect(tipX, PAD_TOP+4, 100, 72);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = bull ? "#00e5a0" : "#ff4d6d";
+      ctx.font = "bold 9px 'Share Tech Mono',monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(bull?"▲ BULLISH":"▼ BEARISH", tipX+6, PAD_TOP+17);
+      ctx.fillStyle = "#5a8aaa";
+      ctx.font = "8.5px 'Share Tech Mono',monospace";
+      ["O:"+hc.o.toFixed(2),"H:"+hc.h.toFixed(2),"L:"+hc.l.toFixed(2),"C:"+hc.c.toFixed(2)].forEach(function(t,ti){
+        ctx.fillText(t, tipX+6, PAD_TOP+30+ti*11);
+      });
+    }
+
+  }, [candles, hoverIdx, livePrice, h]);
+
+  function onMouseMove(e) {
+    var cv = canvasRef.current;
+    if (!cv) return;
+    var rect = cv.getBoundingClientRect();
+    var x = (e.clientX || (e.touches&&e.touches[0].clientX) || 0) - rect.left;
+    var W = rect.width;
+    var PAD_LEFT = 8, PAD_RIGHT = 64;
+    var chartW = W - PAD_LEFT - PAD_RIGHT;
+    var idx = Math.floor(((x - PAD_LEFT) / chartW) * candles.length);
+    if (idx >= 0 && idx < candles.length) setHoverIdx(idx);
   }
-  if (candles.length < 3) {
-    return <div style={{height:h,display:"flex",alignItems:"center",justifyContent:"center",color:"#0e1e40",fontSize:10}}>Mengumpulkan data...</div>;
+
+  if (candles.length < 2) {
+    return <div style={{height:h,display:"flex",alignItems:"center",justifyContent:"center",color:"#0e1e40",fontSize:10,background:"#060d1a",borderRadius:8}}>Mengumpulkan data {pair}...</div>;
   }
-  var maxH = Math.max.apply(null, candles.map(function(c){return ohlc?c.h:c.hi||c.h;}));
-  var minL = Math.min.apply(null, candles.map(function(c){return ohlc?c.l:c.lo||c.l;}));
-  var rng = maxH - minL || maxH * 0.001;
-  var W = 500, H = h, cw = W / candles.length;
-  function toY(v){return H - ((v - minL)/rng) * (H - 12) - 4;}
+
   return (
-    <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height:"100%",display:"block"}}>
-      <defs>
-        <linearGradient id="cbg4" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#03060e"/>
-          <stop offset="100%" stopColor="#010407"/>
-        </linearGradient>
-      </defs>
-      <rect width={W} height={H} fill="url(#cbg4)" rx="8"/>
-      {[0.25, 0.5, 0.75].map(function(p){
-        return <line key={p} x1={0} x2={W} y1={H*p} y2={H*p} stroke="#060c1a" strokeWidth=".7" strokeDasharray="3,5"/>;
-      })}
-      {candles.map(function(c, idx) {
-        var x = idx * cw + cw * 0.5;
-        var hi = ohlc ? c.h : (c.hi||c.h);
-        var lo = ohlc ? c.l : (c.lo||c.l);
-        var up = c.c >= c.o;
-        var col = up ? "#00d890" : "#ff3a58";
-        var bY = toY(Math.max(c.o, c.c));
-        var bH = Math.max(1.5, Math.abs(toY(c.o) - toY(c.c)));
-        return (
-          <g key={idx}>
-            <line x1={x} x2={x} y1={toY(hi)} y2={toY(lo)} stroke={col} strokeWidth=".8" opacity=".5"/>
-            <rect x={x-cw*.38} y={bY} width={cw*.76} height={bH} fill={col} opacity=".88" rx=".5"/>
-          </g>
-        );
-      })}
-    </svg>
+    <div style={{position:"relative",borderRadius:8,overflow:"hidden",background:"#060d1a"}}>
+      {/* Header */}
+      <div style={{position:"absolute",top:6,left:8,zIndex:2,display:"flex",gap:10,alignItems:"center"}}>
+        <span style={{fontFamily:"'Orbitron',monospace",fontSize:10,color:"#7ab0ff",fontWeight:700}}>{pair}</span>
+        {livePrice>0&&<span style={{fontSize:10,color:"#ffd93d",fontFamily:"'Share Tech Mono',monospace"}}>{livePrice>=1000?livePrice.toFixed(2):livePrice.toFixed(5)}</span>}
+        <span style={{fontSize:7,color:"#3a5a80",padding:"1px 6px",border:"1px solid #1a3060",borderRadius:3}}>5m</span>
+        {[["MA7","#ffd93d"],["MA25","#00e5a0"],["MA50","#b06aff"]].map(function(m){
+          return <span key={m[0]} style={{fontSize:7,color:m[1]}}>{m[0]}</span>;
+        })}
+      </div>
+      <canvas ref={canvasRef}
+        style={{width:"100%",height:h,display:"block",cursor:"crosshair"}}
+        onMouseMove={onMouseMove} onMouseLeave={function(){setHoverIdx(null);}}
+        onTouchMove={onMouseMove} onTouchEnd={function(){setHoverIdx(null);}}
+      />
+    </div>
   );
 }
 
-// ─── EQUITY CURVE — Fix #9 ────────────────────────────────────
+
 function EquityCurve(props) {
   var history=props.history||[], h=props.h||80;
   if (history.length<2) return <div style={{height:h,display:"flex",alignItems:"center",justifyContent:"center",color:"#0e1e40",fontSize:9}}>Belum ada data equity</div>;
@@ -634,6 +803,7 @@ function ConfRing(props) {
         <div style={{fontSize:7,color:col,opacity:.6,letterSpacing:2,marginTop:2}}>CONF</div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -715,6 +885,7 @@ function SettingsModal(props) {
         </button>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -732,6 +903,7 @@ function ConfirmDialog(props) {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -1056,6 +1228,7 @@ function QRISPayment(props) {
         )}
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -1097,6 +1270,7 @@ function UpgradeScreen(props) {
         <div style={{textAlign:"center",fontSize:8.5,color:"#0e1e3a",lineHeight:1.8}}>Pembayaran aman via Midtrans. Bisa cancel kapanpun.</div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -1418,6 +1592,7 @@ function SetupScreen(props) {
         )}
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -1433,6 +1608,7 @@ function SplashScreen(){
       <div style={{fontSize:9,color:"#1e3a60",letterSpacing:5}}>AUTONOMOUS AI TRADING</div>
       <div style={{display:"flex",gap:5,marginTop:8}}>{[0,1,2].map(function(i){return <div key={i} style={{width:6,height:6,borderRadius:"50%",background:"#0060e0",animation:"pulse 1.2s "+(i*.3)+"s infinite"}}/>;})}</div>
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -1468,6 +1644,7 @@ function LoginScreen(props){
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -1575,6 +1752,7 @@ function VerifyScreen(props){
         )}
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -1679,6 +1857,7 @@ function ManualOrder(props) {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -2356,7 +2535,7 @@ function Dashboard(props) {
                 </div>
               )}
               {/* Stats row */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6,marginBottom:10}}>
                 {[
                   {l:"SALDO",v:"$"+(config&&config.mode==="real"&&realBalance?realBalance.totalUsdt:portfolio.bal).toLocaleString(undefined,{maximumFractionDigits:0}),c:"#7ab0ff"},
                   {l:"PnL",v:(pnlPos?"+":"")+portfolio.pnl.toFixed(2),c:pnlPos?"#00e5a0":"#ff4d6d"},
@@ -2433,8 +2612,8 @@ function Dashboard(props) {
                   </span>
                 )}
               </div>
-              <div style={{height:120,borderRadius:6,overflow:"hidden"}}>
-                <CandleChart ohlc={ohlcData[viewPair.symbol]} history={viewHist} h={120}/>
+              <div style={{borderRadius:8,overflow:"hidden",marginBottom:10}}>
+                <CandleChart ohlc={ohlcData[viewPair.symbol]} history={viewHist} pair={viewPair?viewPair.label:"BTC/USDT"} livePrice={prices[viewPair?viewPair.symbol:"BTCUSDT"]||0} h={window.innerWidth>768?320:200}/>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginTop:8}}>
                 {(function(){
@@ -2745,6 +2924,7 @@ function Dashboard(props) {
       {showPayment&&payPlan&&<QRISPayment plan={payPlan} onClose={function(){setShowPay(false);setPayPlan(null);}} onSuccess={function(){setShowPay(false);props.onUpgrade(payPlan.id);}}/>}
       {confirm&&<ConfirmDialog msg={confirm.msg} danger={confirm.danger} onYes={confirm.onYes} onNo={confirm.onNo}/>}
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -2793,6 +2973,7 @@ function DisclaimerModal(props) {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -2820,6 +3001,46 @@ function loadKeys() {
 }
 function clearKeys() {
   try { localStorage.removeItem("nt_cfg"); } catch(e) {}
+}
+
+// ─── ERROR BOUNDARY ───────────────────────────────────────────
+// Catches all React render errors → shows recovery UI instead of black screen
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: "" };
+  }
+  static getDerivedStateFromError(err) {
+    return { hasError: true, error: String(err) };
+  }
+  componentDidCatch(err, info) {
+    console.error("NeuraTrade crash:", err, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        React.createElement("div", {
+          style: { minHeight:"100vh", background:"#020810", display:"flex", alignItems:"center",
+            justifyContent:"center", flexDirection:"column", gap:20, padding:20, fontFamily:"monospace" }
+        },
+          React.createElement("div", { style:{ fontSize:32 } }, "⚠️"),
+          React.createElement("div", { style:{ color:"#ff4d6d", fontSize:14, textAlign:"center" } },
+            "App mengalami error. Klik tombol di bawah untuk reset."),
+          React.createElement("div", { style:{ color:"#3a5a80", fontSize:10, maxWidth:300, textAlign:"center", lineHeight:1.6 } },
+            this.state.error),
+          React.createElement("button", {
+            onClick: function() {
+              try { localStorage.clear(); } catch(e) {}
+              window.location.reload();
+            },
+            style: { background:"#003ab0", border:"none", borderRadius:8, padding:"12px 24px",
+              color:"#fff", cursor:"pointer", fontSize:13, fontFamily:"monospace" }
+          }, "🔄 Reset & Buka Ulang")
+        )
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────
@@ -2907,7 +3128,14 @@ export default function App() {
                   }
                 }).catch(function(){});
               window.history.replaceState({}, document.title, window.location.pathname);
-              setScreen("setup");
+              // Check if user has existing config → go to dashboard
+              var existingKeys = loadKeys();
+              if (existingKeys && existingKeys.mode) {
+                setConfig(existingKeys);
+                setScreen("dashboard");
+              } else {
+                setScreen("setup");
+              }
               return;
             }
           } catch(e) { console.warn("Token parse error", e); }
@@ -3071,7 +3299,8 @@ export default function App() {
   }
 
   return(
-    <div style={{fontFamily:"'Share Tech Mono',monospace"}}>
+    <ErrorBoundary>
+    <div style={{fontFamily:"'Share Tech Mono',monospace",position:"fixed",inset:0,overflow:"hidden",background:"#020810"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -3084,6 +3313,9 @@ export default function App() {
         input:focus{outline:none;border-color:#0050d0!important}
         input[type=range]{accent-color:#0060e0}
         button:active{transform:scale(.97)}
+        html,body{height:100%;margin:0;padding:0}
+        *{-webkit-tap-highlight-color:transparent}
+        canvas{touch-action:none}
         
         /* ── RESPONSIVE DESKTOP ── */
         @media (min-width: 768px) {
@@ -3107,24 +3339,38 @@ export default function App() {
         /* Desktop nav sidebar */
         .nt-desktop-nav {
           flex-direction: column;
-          gap: 4px;
-          padding: 16px 12px;
-          background: rgba(1,3,12,.95);
-          border-right: 1px solid #080f22;
-          min-height: 100vh;
-          width: 200px;
+          gap: 3px;
+          padding: 16px 10px;
+          background: rgba(1,3,12,.98);
+          border-right: 1px solid #0a1428;
+          height: 100vh;
+          width: 180px;
           display: none;
+          position: fixed;
+          left: 0; top: 0;
+          z-index: 50;
+          overflow-y: auto;
         }
         .nt-desktop-nav button {
           display: flex; align-items: center; gap: 10px;
           padding: 10px 12px; border-radius: 8px;
-          background: transparent; border: none; cursor: pointer;
+          background: transparent; border: 1px solid transparent; cursor: pointer;
           text-align: left; color: #2a4a70;
           font-family: 'Share Tech Mono', monospace; font-size: 11px;
-          transition: all .15s;
+          transition: all .15s; width: 100%;
         }
-        .nt-desktop-nav button.active, .nt-desktop-nav button:hover {
-          background: rgba(0,80,200,.15); color: #5a90df;
+        .nt-desktop-nav button.active {
+          background: rgba(0,80,200,.2); 
+          border-color: #1a4080;
+          color: #7ab0ff;
+        }
+        .nt-desktop-nav button:hover {
+          background: rgba(0,80,200,.1); color: #5a90df;
+        }
+        @media (min-width: 768px) {
+          .nt-desktop-nav { display: flex !important; }
+          .nt-bottom-nav { display: none !important; }
+          .nt-main-content { margin-left: 180px; }
         }
       `}</style>
       {screen==="splash"&&<SplashScreen/>}
@@ -3148,5 +3394,6 @@ export default function App() {
         />
       )}
     </div>
+    </ErrorBoundary>
   );
 }
