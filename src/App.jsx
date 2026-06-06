@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 //  NEURATRADE v5 — All 20 Issues Fixed
@@ -803,7 +803,6 @@ function ConfRing(props) {
         <div style={{fontSize:7,color:col,opacity:.6,letterSpacing:2,marginTop:2}}>CONF</div>
       </div>
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -885,7 +884,6 @@ function SettingsModal(props) {
         </button>
       </div>
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -903,7 +901,6 @@ function ConfirmDialog(props) {
         </div>
       </div>
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -1228,7 +1225,6 @@ function QRISPayment(props) {
         )}
       </div>
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -1270,7 +1266,6 @@ function UpgradeScreen(props) {
         <div style={{textAlign:"center",fontSize:8.5,color:"#0e1e3a",lineHeight:1.8}}>Pembayaran aman via Midtrans. Bisa cancel kapanpun.</div>
       </div>
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -1592,7 +1587,6 @@ function SetupScreen(props) {
         )}
       </div>
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -1608,7 +1602,6 @@ function SplashScreen(){
       <div style={{fontSize:9,color:"#1e3a60",letterSpacing:5}}>AUTONOMOUS AI TRADING</div>
       <div style={{display:"flex",gap:5,marginTop:8}}>{[0,1,2].map(function(i){return <div key={i} style={{width:6,height:6,borderRadius:"50%",background:"#0060e0",animation:"pulse 1.2s "+(i*.3)+"s infinite"}}/>;})}</div>
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -1644,7 +1637,6 @@ function LoginScreen(props){
         </div>
       </div>
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -1752,7 +1744,6 @@ function VerifyScreen(props){
         )}
       </div>
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -1857,7 +1848,6 @@ function ManualOrder(props) {
         </div>
       )}
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -2924,7 +2914,6 @@ function Dashboard(props) {
       {showPayment&&payPlan&&<QRISPayment plan={payPlan} onClose={function(){setShowPay(false);setPayPlan(null);}} onSuccess={function(){setShowPay(false);props.onUpgrade(payPlan.id);}}/>}
       {confirm&&<ConfirmDialog msg={confirm.msg} danger={confirm.danger} onYes={confirm.onYes} onNo={confirm.onNo}/>}
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -2973,7 +2962,6 @@ function DisclaimerModal(props) {
         </div>
       </div>
     </div>
-    </ErrorBoundary>
   );
 }
 
@@ -3001,46 +2989,6 @@ function loadKeys() {
 }
 function clearKeys() {
   try { localStorage.removeItem("nt_cfg"); } catch(e) {}
-}
-
-// ─── ERROR BOUNDARY ───────────────────────────────────────────
-// Catches all React render errors → shows recovery UI instead of black screen
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: "" };
-  }
-  static getDerivedStateFromError(err) {
-    return { hasError: true, error: String(err) };
-  }
-  componentDidCatch(err, info) {
-    console.error("NeuraTrade crash:", err, info);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        React.createElement("div", {
-          style: { minHeight:"100vh", background:"#020810", display:"flex", alignItems:"center",
-            justifyContent:"center", flexDirection:"column", gap:20, padding:20, fontFamily:"monospace" }
-        },
-          React.createElement("div", { style:{ fontSize:32 } }, "⚠️"),
-          React.createElement("div", { style:{ color:"#ff4d6d", fontSize:14, textAlign:"center" } },
-            "App mengalami error. Klik tombol di bawah untuk reset."),
-          React.createElement("div", { style:{ color:"#3a5a80", fontSize:10, maxWidth:300, textAlign:"center", lineHeight:1.6 } },
-            this.state.error),
-          React.createElement("button", {
-            onClick: function() {
-              try { localStorage.clear(); } catch(e) {}
-              window.location.reload();
-            },
-            style: { background:"#003ab0", border:"none", borderRadius:8, padding:"12px 24px",
-              color:"#fff", cursor:"pointer", fontSize:13, fontFamily:"monospace" }
-          }, "🔄 Reset & Buka Ulang")
-        )
-      );
-    }
-    return this.props.children;
-  }
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────
@@ -3299,7 +3247,6 @@ export default function App() {
   }
 
   return(
-    <ErrorBoundary>
     <div style={{fontFamily:"'Share Tech Mono',monospace",position:"fixed",inset:0,overflow:"hidden",background:"#020810"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
@@ -3394,6 +3341,5 @@ export default function App() {
         />
       )}
     </div>
-    </ErrorBoundary>
   );
 }
