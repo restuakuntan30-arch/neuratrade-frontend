@@ -16,16 +16,16 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── ADMIN CONFIG — edit sesuai data kamu ─────────────────────
 var ADMIN_QRIS_URL  = "https://ibb.co.com/yFtwBRWp";
-var ADMIN_WA        = "628123456789";
+var ADMIN_WA        = "None";
 var ADMIN_NAMA      = "NeuraTrade AI";
 var ADMIN_BANK      = [
-  { bank:"BCA",     no:"0", atas:ADMIN_NAMA },
-  { bank:"Mandiri", no:"0", atas:ADMIN_NAMA },
+  { bank:"BCA",     no:"Tidak Ada", atas:ADMIN_NAMA },
+  { bank:"Mandiri", no:"Tidak Ada", atas:ADMIN_NAMA },
 ];
 var ADMIN_EWALLET = [
   { name:"GoPay", no:"0822-5093-1638", color:"#00aad4" },
-  { name:"OVO",   no:"0", color:"#4c2a7e" },
-  { name:"Dana",  no:"0", color:"#118eed" },
+  { name:"OVO",   no:"Tidak Ada", color:"#4c2a7e" },
+  { name:"Dana",  no:"Tidak Ada", color:"#118eed" },
 ];
 // Fix #20 — email demo tidak hardcode di konstanta publik
 var _D = ["demo@neuratrade.ai","test@gmail.com"];
@@ -1100,144 +1100,257 @@ function UpgradeScreen(props) {
 
 // ─── SETUP SCREEN — Fix #3 #5 ─────────────────────────────────
 function SetupScreen(props) {
-  var onDone=props.onDone;
-  var [bal, setBal] = useState("5000");
-  var [apiKey, setApiKey] = useState("");
-  var [secret, setSecret] = useState("");
-  var [anthropicKey, setAnthropicKey] = useState("");
-  var [aiModel, setAiModel] = useState(AI_MODELS[0].id);
-  var [selEx, setSelEx] = useState(EXCHANGES_LIST[0]);
-  var [scope, setScope] = useState(MARKET_SCOPES[0]);
-  var [err, setErr] = useState("");
+  var onDone = props.onDone;
+
+  // ── Mode selection: demo or real ──
+  var [mode,       setMode]       = useState(""); // "" | "demo" | "real"
+  var [bal,        setBal]        = useState("5000");
+  var [apiKey,     setApiKey]     = useState("");
+  var [secret,     setSecret]     = useState("");
+  var [anthropicKey,setAnthropicKey] = useState("");
+  var [aiModel,    setAiModel]    = useState(AI_PROVIDERS[0].id);
+  var [selEx,      setSelEx]      = useState(EXCHANGES_LIST[0]);
+  var [scope,      setScope]      = useState(MARKET_SCOPES[0]);
+  var [err,        setErr]        = useState("");
+  var [apiVisible, setApiVisible] = useState(false);
+
   function submit() {
-    var b=parseFloat(bal);
-    if (!b||b<10){setErr("Modal minimal $10");return;}
+    var b = parseFloat(bal);
+    if (!b || b < 10) { setErr("Modal minimal $10"); return; }
+    if (mode === "real") {
+      if (!apiKey.trim())    { setErr("API Key wajib diisi untuk mode Real Trading"); return; }
+      if (!secret.trim())    { setErr("Secret Key wajib diisi untuk mode Real Trading"); return; }
+    }
     setErr("");
-    onDone({ balance:b, apiKey:apiKey.trim(), secretKey:secret.trim(), anthropicKey:anthropicKey.trim(), aiModel:aiModel, exchange:selEx, scope:scope });
+    onDone({
+      mode:        mode,
+      balance:     b,
+      apiKey:      mode === "real" ? apiKey.trim() : "",
+      secretKey:   mode === "real" ? secret.trim() : "",
+      anthropicKey: anthropicKey.trim(),
+      aiModel:     aiModel,
+      exchange:    selEx,
+      scope:       scope,
+    });
   }
+
+  // ── STEP 1: Choose mode ──
+  if (mode === "") {
+    return (
+      <div style={{ position:"fixed",inset:0,background:"rgba(1,2,10,.97)",overflowY:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 20px" }}>
+        <div style={{ width:"100%",maxWidth:480 }}>
+          <div style={{ textAlign:"center",marginBottom:30 }}>
+            <div style={{ fontFamily:"'Orbitron',monospace",fontSize:22,fontWeight:900,letterSpacing:2,marginBottom:8 }}>
+              <span style={{ background:"linear-gradient(135deg,#0080ff,#00e5a0)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent" }}>NEURA</span>
+              <span style={{ background:"linear-gradient(135deg,#ff4d6d,#ff8f6b)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent" }}>TRADE</span>
+            </div>
+            <div style={{ fontSize:10,color:"#2a4a7a" }}>Pilih mode trading kamu</div>
+          </div>
+
+          {/* Demo Mode */}
+          <div onClick={function(){ setMode("demo"); }}
+            style={{ background:"rgba(0,80,200,.08)",border:"2px solid #1a4080",borderRadius:14,padding:22,marginBottom:12,cursor:"pointer",transition:"all .2s" }}>
+            <div style={{ display:"flex",alignItems:"center",gap:14,marginBottom:10 }}>
+              <div style={{ width:52,height:52,borderRadius:12,background:"rgba(0,100,255,.15)",border:"1px solid #1a4080",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0 }}>🎮</div>
+              <div>
+                <div style={{ fontFamily:"'Orbitron',monospace",fontSize:14,color:"#5a9fff",fontWeight:700,marginBottom:4 }}>Demo Mode</div>
+                <div style={{ fontSize:10,color:"#2a4a7a",lineHeight:1.7 }}>Coba tanpa uang nyata · Tidak perlu API key · Harga simulasi realistis</div>
+              </div>
+            </div>
+            <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
+              {["✅ Gratis selamanya","✅ Tidak perlu API Key","✅ Tidak ada risiko","✅ Cocok untuk belajar"].map(function(t){
+                return <span key={t} style={{ fontSize:8.5,color:"#3a6aaa",background:"rgba(0,60,200,.1)",borderRadius:4,padding:"2px 8px" }}>{t}</span>;
+              })}
+            </div>
+          </div>
+
+          {/* Real Trading Mode */}
+          <div onClick={function(){ setMode("real"); }}
+            style={{ background:"rgba(0,150,50,.06)",border:"2px solid #004422",borderRadius:14,padding:22,cursor:"pointer",transition:"all .2s",position:"relative" }}>
+            <div style={{ position:"absolute",top:-10,right:14,background:"linear-gradient(135deg,#005500,#00aa00)",color:"#fff",fontSize:8,fontWeight:700,borderRadius:4,padding:"3px 10px",fontFamily:"'Orbitron',monospace",letterSpacing:1 }}>REAL TRADING</div>
+            <div style={{ display:"flex",alignItems:"center",gap:14,marginBottom:10 }}>
+              <div style={{ width:52,height:52,borderRadius:12,background:"rgba(0,200,50,.1)",border:"1px solid #004422",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0 }}>⚡</div>
+              <div>
+                <div style={{ fontFamily:"'Orbitron',monospace",fontSize:14,color:"#00e5a0",fontWeight:700,marginBottom:4 }}>Real Trading</div>
+                <div style={{ fontSize:10,color:"#2a7a50",lineHeight:1.7 }}>Eksekusi order nyata ke exchange · Butuh API Key · Profit & loss nyata</div>
+              </div>
+            </div>
+            <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
+              {["⚡ Order nyata ke Binance","⚡ Profit & loss nyata","⚠️ Butuh API Key Exchange","⚠️ Ada risiko kehilangan modal"].map(function(t){
+                var isWarn = t.startsWith("⚠️");
+                return <span key={t} style={{ fontSize:8.5,color:isWarn?"#aa5020":"#3a7a50",background:isWarn?"rgba(100,40,0,.1)":"rgba(0,100,30,.1)",borderRadius:4,padding:"2px 8px" }}>{t}</span>;
+              })}
+            </div>
+          </div>
+
+          <div style={{ textAlign:"center",marginTop:16,fontSize:8.5,color:"#0a1830",lineHeight:1.8 }}>
+            Kamu bisa ganti mode kapan saja dari Settings.<br/>
+            Demo mode tidak mengirim order ke exchange manapun.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── STEP 2: Setup screen ──
+  var isReal = mode === "real";
+
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(1,2,10,.97)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,overflowY:"auto"}}>
-      <div style={{width:"100%",maxWidth:480,background:"#030610",border:"1px solid #0a1828",borderRadius:18,padding:28}}>
-        <div style={{fontFamily:"'Orbitron',monospace",fontSize:14,color:"#5a9fff",fontWeight:700,marginBottom:4}}>Setup Trading</div>
-        <div style={{fontSize:10,color:"#1e3a60",marginBottom:20,lineHeight:1.8}}>Konfigurasi modal, exchange, dan fokus pasar AI kamu.</div>
+    <div style={{ position:"fixed",inset:0,background:"rgba(1,2,10,.97)",overflowY:"auto",WebkitOverflowScrolling:"touch" }}>
+      <div style={{ width:"100%",maxWidth:520,margin:"0 auto",background:"#030610",minHeight:"100vh",padding:"20px 16px 40px",borderLeft:"1px solid "+(isReal?"#004422":"#0a1828"),borderRight:"1px solid "+(isReal?"#004422":"#0a1828") }}>
 
-        <div style={{marginBottom:16}}>
-          <div style={{fontSize:9,color:"#152040",letterSpacing:2,marginBottom:8}}>MODAL TRADING</div>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
-            <span style={{fontFamily:"'Orbitron',monospace",fontSize:16,color:"#00e5a0",fontWeight:900}}>$</span>
-            <input value={bal} onChange={function(e){setBal(e.target.value);}} type="number" min="10" style={{flex:1,background:"#020508",border:"1px solid #0a1428",borderRadius:8,padding:"10px 14px",color:"#cce0ff",fontSize:20,fontFamily:"'Orbitron',monospace",fontWeight:800,textAlign:"center",outline:"none"}}/>
+        {/* Header with mode badge */}
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18 }}>
+          <div>
+            <div style={{ fontFamily:"'Orbitron',monospace",fontSize:14,color:isReal?"#00e5a0":"#5a9fff",fontWeight:700 }}>
+              {isReal ? "⚡ Real Trading Setup" : "🎮 Demo Mode Setup"}
+            </div>
+            <div style={{ fontSize:9.5,color:"#1e3a60",marginTop:2 }}>
+              {isReal ? "Order akan dieksekusi ke exchange sungguhan" : "Paper trading — tidak ada uang nyata"}
+            </div>
           </div>
-          <div style={{display:"flex",gap:5}}>
-            {[500,1000,5000,10000].map(function(v){var isAct=parseFloat(bal)===v;return(
-              <button key={v} onClick={function(){setBal(String(v));}} style={{flex:1,background:isAct?"rgba(0,60,180,.25)":"#020508",border:"1px solid "+(isAct?"#0050c0":"#08121e"),color:isAct?"#6a9aff":"#253a5e",borderRadius:6,padding:"5px 0",fontSize:10,cursor:"pointer"}}>
-                ${v>=1000?v/1000+"K":v}
-              </button>
-            );})}
-          </div>
+          <button onClick={function(){ setMode(""); setErr(""); }}
+            style={{ background:"transparent",border:"1px solid #0a1428",borderRadius:6,padding:"4px 10px",color:"#2a4a70",cursor:"pointer",fontSize:9,fontFamily:"'Share Tech Mono',monospace" }}>
+            ← Ganti
+          </button>
         </div>
 
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:9,color:"#152040",letterSpacing:2,marginBottom:8}}>EXCHANGE</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
-            {EXCHANGES_LIST.map(function(ex){var isSel=selEx.name===ex.name;return(
-              <button key={ex.name} onClick={function(){setSelEx(ex);}} style={{background:isSel?ex.color+"15":"#020508",border:"1px solid "+(isSel?ex.color+"50":"#0a1428"),borderRadius:8,padding:"7px 8px",cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
-                <div style={{fontSize:10,color:isSel?ex.color:"#3a5a80",fontWeight:700}}>{ex.name}</div>
-                <div style={{fontSize:7.5,color:"#1a3060",marginTop:1}}>{ex.type}</div>
-              </button>
-            );})}
+        {/* Modal */}
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:9,color:"#152040",letterSpacing:2,marginBottom:8 }}>MODAL TRADING</div>
+          <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:7 }}>
+            <span style={{ fontFamily:"'Orbitron',monospace",fontSize:16,color:"#00e5a0",fontWeight:900 }}>$</span>
+            <input value={bal} onChange={function(e){setBal(e.target.value);}} type="number" min="10"
+              style={{ flex:1,background:"#020508",border:"1px solid #0a1428",borderRadius:8,padding:"10px 14px",color:"#cce0ff",fontSize:20,fontFamily:"'Orbitron',monospace",fontWeight:800,textAlign:"center",outline:"none" }}/>
           </div>
-        </div>
-
-        {/* Anthropic AI Key */}
-        <div style={{marginBottom:14,background:"rgba(60,20,80,.2)",border:"1px solid #3a1a5a",borderRadius:9,padding:12}}>
-          <div style={{fontSize:9,color:"#b06aff",letterSpacing:1.5,marginBottom:8}}>
-            ANTHROPIC API KEY (AI Engine)
-          </div>
-          <input value={anthropicKey} onChange={function(e){setAnthropicKey(e.target.value);}} placeholder="sk-ant-... (dari console.anthropic.com)" style={{width:"100%",background:"#020508",border:"1px solid #2a1a4a",borderRadius:7,padding:"8px 12px",color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",marginBottom:7,outline:"none"}}/>
-          <div style={{fontSize:8.5,color:"#6a3a9a",lineHeight:1.8,marginBottom:7}}>
-            Daftar gratis: <strong style={{color:"#b06aff"}}>console.anthropic.com</strong> → dapat $5 kredit gratis<br/>
-            Key ini HANYA tersimpan di device kamu, tidak dikirim ke server manapun.
-          </div>
-          {/* Provider + model selector */}
-          <div style={{fontSize:8.5,color:"#6a3a9a",marginBottom:8}}>PILIH AI PROVIDER:</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {AI_PROVIDERS.map(function(prov){
-              var isSel = aiModel === prov.id;
-              return (
-                <button key={prov.id} onClick={function(){setAiModel(prov.id);setAnthropicKey("");}}
-                  style={{background:isSel?prov.color+"15":"#020508",border:"2px solid "+(isSel?prov.color+"70":"#0a1428"),borderRadius:8,padding:"10px 12px",cursor:"pointer",textAlign:"left",transition:"all .15s",position:"relative"}}>
-                  {prov.resetDaily&&<span style={{position:"absolute",top:-7,right:8,background:"#ff6b35",color:"#fff",fontSize:7,fontWeight:700,borderRadius:3,padding:"1px 6px",fontFamily:"'Orbitron',monospace"}}>RESET HARIAN</span>}
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <div style={{minWidth:36,height:36,borderRadius:8,background:prov.color+"20",border:"1px solid "+prov.color+"40",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Orbitron',monospace",fontSize:9,fontWeight:800,color:prov.color,flexShrink:0}}>{prov.name}</div>
-                    <div style={{flex:1}}>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                        <span style={{fontFamily:"'Orbitron',monospace",fontSize:10,color:isSel?prov.color:"#3a5a80",fontWeight:700}}>{prov.name}</span>
-                        <span style={{fontSize:8,color:prov.color,background:prov.color+"15",border:"1px solid "+prov.color+"30",borderRadius:3,padding:"1px 7px",fontWeight:700}}>{prov.label}</span>
-                      </div>
-                      <div style={{fontSize:8.5,color:"#2a4a70",marginBottom:2}}>{prov.desc}</div>
-                      <div style={{fontSize:8.5,color:prov.color,fontWeight:700}}>{prov.costPer}/analisis
-                        {prov.dailyLimit&&<span style={{color:"#2a4a70",fontWeight:400}}> · limit {prov.dailyLimit.toLocaleString()}/hari</span>}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              );
+          <div style={{ display:"flex",gap:5 }}>
+            {[500,1000,5000,10000].map(function(v){
+              var isAct = parseFloat(bal)===v;
+              return <button key={v} onClick={function(){ setBal(String(v)); }} style={{ flex:1,background:isAct?"rgba(0,60,180,.25)":"#020508",border:"1px solid "+(isAct?"#0050c0":"#08121e"),color:isAct?"#6a9aff":"#253a5e",borderRadius:6,padding:"5px 0",fontSize:10,cursor:"pointer" }}>${v>=1000?v/1000+"K":v}</button>;
             })}
           </div>
-          {/* Dynamic key label based on selected provider */}
-          {(function(){
-            var selProv = AI_PROVIDERS.find(function(p){return p.id===aiModel;})||AI_PROVIDERS[0];
-            return (
-              <div style={{marginTop:8}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                  <span style={{fontSize:8.5,color:"#6a3a9a"}}>{selProv.keyLabel}</span>
-                  <button onClick={function(){window.open(selProv.keyUrl,"_blank");}}
-                    style={{background:"transparent",border:"1px solid #3a1a5a",borderRadius:4,padding:"2px 8px",color:"#b06aff",cursor:"pointer",fontSize:8,fontFamily:"'Share Tech Mono',monospace"}}>
-                    Daftar Gratis
-                  </button>
+        </div>
+
+        {/* Exchange */}
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontSize:9,color:"#152040",letterSpacing:2,marginBottom:8 }}>EXCHANGE</div>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6 }}>
+            {EXCHANGES_LIST.map(function(ex){
+              var isSel=selEx.name===ex.name;
+              return <button key={ex.name} onClick={function(){ setSelEx(ex); }}
+                style={{ background:isSel?ex.color+"15":"#020508",border:"1px solid "+(isSel?ex.color+"50":"#0a1428"),borderRadius:8,padding:"7px 8px",cursor:"pointer",textAlign:"left" }}>
+                <div style={{ fontSize:10,color:isSel?ex.color:"#3a5a80",fontWeight:700 }}>{ex.name}</div>
+                <div style={{ fontSize:7.5,color:"#1a3060",marginTop:1 }}>{ex.type}</div>
+              </button>;
+            })}
+          </div>
+        </div>
+
+        {/* API Keys — REQUIRED for real, optional for demo */}
+        <div style={{ marginBottom:14,background:isReal?"rgba(0,30,15,.3)":"rgba(0,20,40,.2)",border:"1px solid "+(isReal?"#003a18":"#0a1428"),borderRadius:9,padding:12 }}>
+          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
+            <div style={{ fontSize:9,color:isReal?"#2a7a50":"#2a4a7a",letterSpacing:1.5,fontWeight:700 }}>
+              {isReal ? "⚡ API KEY EXCHANGE (WAJIB)" : "API KEY EXCHANGE (Opsional)"}
+            </div>
+            {isReal && <span style={{ fontSize:8,color:"#ff4d6d",background:"rgba(80,0,0,.2)",border:"1px solid #5a0000",borderRadius:3,padding:"1px 7px" }}>REQUIRED</span>}
+          </div>
+          <input value={apiKey} onChange={function(e){ setApiKey(e.target.value); }}
+            placeholder={selEx.name + " API Key"}
+            style={{ width:"100%",background:"#020508",border:"1px solid "+(isReal&&!apiKey?"#5a0000":"#0a1428"),borderRadius:7,padding:"9px 12px",color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",marginBottom:7,outline:"none" }}/>
+          <div style={{ position:"relative" }}>
+            <input value={secret} onChange={function(e){ setSecret(e.target.value); }}
+              type={apiVisible?"text":"password"}
+              placeholder={selEx.name + " Secret Key"}
+              style={{ width:"100%",background:"#020508",border:"1px solid "+(isReal&&!secret?"#5a0000":"#0a1428"),borderRadius:7,padding:"9px 12px",paddingRight:40,color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",outline:"none" }}/>
+            <button onClick={function(){ setApiVisible(!apiVisible); }}
+              style={{ position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:"#2a4a70",cursor:"pointer",fontSize:14,padding:4 }}>
+              {apiVisible?"🙈":"👁"}
+            </button>
+          </div>
+          {isReal ? (
+            <div style={{ fontSize:8.5,color:"#2a5a40",marginTop:6,lineHeight:1.7 }}>
+              API Key digunakan untuk eksekusi order nyata ke {selEx.name}.<br/>
+              Key disimpan hanya di memory device kamu — tidak dikirim ke server kami.
+            </div>
+          ) : (
+            <div style={{ fontSize:8.5,color:"#1e3a60",marginTop:6 }}>
+              Kosongkan untuk paper trading. Isi jika ingin coba koneksi real.
+            </div>
+          )}
+        </div>
+
+        {/* AI Provider */}
+        <div style={{ marginBottom:14,background:"rgba(60,20,80,.15)",border:"1px solid #3a1a5a",borderRadius:9,padding:12 }}>
+          <div style={{ fontSize:9,color:"#b06aff",letterSpacing:1.5,marginBottom:8 }}>AI PROVIDER</div>
+          <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
+            {AI_PROVIDERS.map(function(prov){
+              var isSel = aiModel === prov.id;
+              return <button key={prov.id} onClick={function(){ setAiModel(prov.id); }}
+                style={{ background:isSel?prov.color+"15":"#020508",border:"1px solid "+(isSel?prov.color+"50":"#0a1428"),borderRadius:8,padding:"9px 12px",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:10 }}>
+                <div style={{ minWidth:32,height:32,borderRadius:7,background:prov.color+"20",border:"1px solid "+prov.color+"30",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8.5,fontWeight:800,color:prov.color,fontFamily:"'Orbitron',monospace",flexShrink:0 }}>{prov.name}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:10,color:isSel?prov.color:"#3a5a80",fontWeight:700 }}>{prov.name} <span style={{ fontSize:8,color:prov.color,marginLeft:4 }}>{prov.label}</span></div>
+                  <div style={{ fontSize:8,color:"#1a3060" }}>{prov.desc}</div>
                 </div>
-                <input value={anthropicKey} onChange={function(e){setAnthropicKey(e.target.value);}} placeholder={selProv.keyPlaceholder}
-                  style={{width:"100%",background:"#020508",border:"1px solid #2a1a4a",borderRadius:7,padding:"8px 12px",color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",outline:"none"}}/>
-                {selProv.resetDaily&&(
-                  <div style={{fontSize:8,color:"#ff6b35",marginTop:4,lineHeight:1.7}}>
-                    Gratis! Limit reset otomatis tiap hari (00:00 UTC = 07:00 WIB).
-                    AI akan berhenti saat limit tercapai dan lanjut otomatis besoknya.
-                  </div>
-                )}
+                <div style={{ fontSize:9,color:prov.color,fontWeight:700,flexShrink:0 }}>{prov.costPer}</div>
+              </button>;
+            })}
+          </div>
+          {(function(){
+            var selProv = AI_PROVIDERS.find(function(p){ return p.id===aiModel; }) || AI_PROVIDERS[0];
+            return (
+              <div style={{ marginTop:8 }}>
+                <div style={{ fontSize:8.5,color:"#6a3a9a",marginBottom:5 }}>{selProv.keyLabel}</div>
+                <div style={{ display:"flex",gap:6 }}>
+                  <input value={anthropicKey} onChange={function(e){ setAnthropicKey(e.target.value); }}
+                    placeholder={selProv.keyPlaceholder}
+                    style={{ flex:1,background:"#020508",border:"1px solid #2a1a4a",borderRadius:7,padding:"8px 12px",color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",outline:"none" }}/>
+                  <button onClick={function(){ window.open(selProv.keyUrl,"_blank"); }}
+                    style={{ background:"rgba(60,20,120,.3)",border:"1px solid #3a1a6a",borderRadius:7,padding:"0 10px",color:"#b06aff",cursor:"pointer",fontSize:8.5,flexShrink:0 }}>Daftar</button>
+                </div>
+                {selProv.resetDaily && <div style={{ fontSize:8,color:"#ff6b35",marginTop:4 }}>Gratis! Reset tiap hari jam 07.00 WIB.</div>}
               </div>
             );
           })()}
         </div>
 
-        {/* Exchange API Key */}
-        <div style={{marginBottom:14,background:"rgba(0,30,15,.2)",border:"1px solid #003a18",borderRadius:9,padding:12}}>
-          <div style={{fontSize:9,color:"#2a7a50",letterSpacing:1.5,marginBottom:8}}>EXCHANGE API KEY (untuk Real Trading)</div>
-          <input value={apiKey} onChange={function(e){setApiKey(e.target.value);}} placeholder={selEx.name+" API Key"} style={{width:"100%",background:"#020508",border:"1px solid #0a1428",borderRadius:7,padding:"8px 12px",color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",marginBottom:7,outline:"none"}}/>
-          <input value={secret} onChange={function(e){setSecret(e.target.value);}} type="password" placeholder={selEx.name+" Secret Key"} style={{width:"100%",background:"#020508",border:"1px solid #0a1428",borderRadius:7,padding:"8px 12px",color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",outline:"none"}}/>
-          <div style={{fontSize:8,color:"#1a4030",marginTop:6}}>Kosongkan untuk paper trading. Semua key hanya di memory device kamu.</div>
-        </div>
-
-        <div style={{marginBottom:18}}>
-          <div style={{fontSize:9,color:"#152040",letterSpacing:2,marginBottom:8}}>FOKUS PASAR AI</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-            {MARKET_SCOPES.map(function(sc){var isSel=scope.id===sc.id;return(
-              <button key={sc.id} onClick={function(){setScope(sc);}} style={{background:isSel?sc.color+"15":"#020508",border:"1px solid "+(isSel?sc.color+"50":"#0a1428"),borderRadius:8,padding:"9px 10px",cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
-                <div style={{fontFamily:"'Orbitron',monospace",fontSize:9,color:isSel?sc.color:"#3a5a80",fontWeight:700,marginBottom:2}}>{sc.label}</div>
-                <div style={{fontSize:8.5,color:"#1a3060"}}>{sc.desc}</div>
-              </button>
-            );})}
+        {/* Market Scope */}
+        <div style={{ marginBottom:18 }}>
+          <div style={{ fontSize:9,color:"#152040",letterSpacing:2,marginBottom:8 }}>FOKUS PASAR AI</div>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 }}>
+            {MARKET_SCOPES.map(function(sc){
+              var isSel=scope.id===sc.id;
+              return <button key={sc.id} onClick={function(){ setScope(sc); }}
+                style={{ background:isSel?sc.color+"15":"#020508",border:"1px solid "+(isSel?sc.color+"50":"#0a1428"),borderRadius:8,padding:"9px 10px",cursor:"pointer",textAlign:"left" }}>
+                <div style={{ fontFamily:"'Orbitron',monospace",fontSize:9,color:isSel?sc.color:"#3a5a80",fontWeight:700,marginBottom:2 }}>{sc.label}</div>
+                <div style={{ fontSize:8.5,color:"#1a3060" }}>{sc.desc}</div>
+              </button>;
+            })}
           </div>
         </div>
 
-        {err&&<div style={{fontSize:9.5,color:"#ff7a30",marginBottom:10,padding:"6px 10px",background:"rgba(80,20,0,.3)",border:"1px solid #6a2000",borderRadius:6}}>[!] {err}</div>}
-        <button onClick={submit} style={{width:"100%",background:"linear-gradient(135deg,#003ab0,#006eff)",border:"none",borderRadius:10,padding:13,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1}}>
-          Mulai Trading
+        {err && <div style={{ fontSize:9.5,color:"#ff7a30",marginBottom:10,padding:"7px 12px",background:"rgba(80,20,0,.3)",border:"1px solid #6a2000",borderRadius:6 }}>[!] {err}</div>}
+
+        <button onClick={submit}
+          style={{ width:"100%",background:isReal?"linear-gradient(135deg,#003500,#007700)":"linear-gradient(135deg,#003ab0,#006eff)",border:"none",borderRadius:10,padding:14,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:1 }}>
+          {isReal ? "⚡ Mulai Real Trading" : "🎮 Mulai Demo Trading"}
         </button>
-        <div style={{textAlign:"center",marginTop:10,fontSize:8.5,color:"#0a1830"}}>Paper Trading — tidak ada uang nyata — bukan financial advice</div>
+        {isReal && (
+          <div style={{ textAlign:"center",marginTop:8,fontSize:8.5,color:"#2a5a40",lineHeight:1.8 }}>
+            ⚠️ Mode ini mengeksekusi order nyata ke {selEx.name}.<br/>
+            Pastikan API Key sudah benar dan saldo exchange mencukupi.
+          </div>
+        )}
+        {!isReal && (
+          <div style={{ textAlign:"center",marginTop:8,fontSize:8.5,color:"#1e3a60",lineHeight:1.8 }}>
+            Paper trading — tidak ada uang nyata — bukan financial advice
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
 
 // ─── SPLASH / LOGIN / VERIFY ──────────────────────────────────
 function SplashScreen(){
@@ -1289,21 +1402,107 @@ function LoginScreen(props){
 }
 
 function VerifyScreen(props){
-  var [cd,setCd]=useState(5);
-  useEffect(function(){var t=setInterval(function(){setCd(function(c){if(c<=1){clearInterval(t);props.onVerified();return 0;}return c-1;});},1000);return function(){clearInterval(t);};},[props.onVerified]);
+  var isDemo = props.isDemo || false;
+  var [cd, setCd]         = useState(5);
+  var [checking, setChecking] = useState(false);
+  var [resent,   setResent]   = useState(false);
+
+  // Auto-proceed only for demo emails
+  useEffect(function(){
+    if (!isDemo) return;
+    var t = setInterval(function(){
+      setCd(function(c){
+        if(c<=1){ clearInterval(t); props.onVerified(); return 0; }
+        return c-1;
+      });
+    }, 1000);
+    return function(){ clearInterval(t); };
+  }, [isDemo, props.onVerified]);
+
+  async function resendLink() {
+    setResent(false);
+    var SUPA_URL  = "https://bgoezzoalgkoivygnoqp.supabase.co";
+    var SUPA_ANON = props.supaAnon || "";
+    try {
+      await fetch(SUPA_URL + "/auth/v1/otp", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "apikey": SUPA_ANON },
+        body: JSON.stringify({ email: props.email, options: { emailRedirectTo: window.location.origin } }),
+      });
+      setResent(true);
+    } catch(e) {}
+  }
+
   return(
     <div style={{position:"fixed",inset:0,background:"#020810",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div style={{maxWidth:360,width:"100%",textAlign:"center"}}>
-        <div style={{fontSize:44,marginBottom:16}}>📧</div>
-        <div style={{fontFamily:"'Orbitron',monospace",fontSize:14,color:"#5a9fff",marginBottom:8,fontWeight:700}}>Magic Link Terkirim!</div>
-        <div style={{fontSize:10,color:"#2a4a7a",marginBottom:6,lineHeight:1.9}}>Link dikirim ke:</div>
-        <div style={{fontFamily:"'Share Tech Mono',monospace",fontSize:12,color:"#00e5a0",marginBottom:20}}>{props.email}</div>
-        <div style={{background:"rgba(3,6,18,.95)",border:"1px solid #0a1428",borderRadius:12,padding:18}}>
-          <div style={{fontSize:9.5,color:"#1e3a60",marginBottom:8}}>Demo: masuk otomatis dalam</div>
-          <div style={{fontFamily:"'Orbitron',monospace",fontSize:38,fontWeight:900,color:"#00e5a0"}}>{cd}</div>
-          <div style={{fontSize:8.5,color:"#1a3060",marginTop:6}}>detik...</div>
+      <div style={{maxWidth:400,width:"100%",textAlign:"center"}}>
+        <div style={{fontSize:52,marginBottom:16}}>📧</div>
+        <div style={{fontFamily:"'Orbitron',monospace",fontSize:16,color:"#5a9fff",marginBottom:8,fontWeight:700}}>
+          Cek Email Kamu!
         </div>
-        <div style={{marginTop:12,fontSize:9,color:"#1e3a60",lineHeight:1.8}}>Email yang sudah pernah login akan langsung masuk tanpa verifikasi ulang.</div>
+        <div style={{fontSize:11,color:"#2a4a7a",marginBottom:6,lineHeight:1.9}}>
+          Magic link dikirim ke:
+        </div>
+        <div style={{fontFamily:"'Share Tech Mono',monospace",fontSize:13,color:"#00e5a0",marginBottom:20,
+          background:"rgba(0,80,40,.1)",border:"1px solid #004422",borderRadius:8,padding:"8px 16px",display:"inline-block"}}>
+          {props.email}
+        </div>
+
+        {isDemo ? (
+          <div style={{background:"rgba(3,6,18,.95)",border:"1px solid #0a1428",borderRadius:12,padding:18,marginBottom:16}}>
+            <div style={{fontSize:9.5,color:"#1e3a60",marginBottom:8}}>Demo: masuk otomatis dalam</div>
+            <div style={{fontFamily:"'Orbitron',monospace",fontSize:38,fontWeight:900,color:"#00e5a0"}}>{cd}</div>
+            <div style={{fontSize:8.5,color:"#1a3060",marginTop:6}}>detik...</div>
+          </div>
+        ) : (
+          <div style={{background:"rgba(3,6,18,.95)",border:"1px solid #0a1428",borderRadius:12,padding:20,marginBottom:16,textAlign:"left"}}>
+            <div style={{fontSize:10,color:"#5a8aff",fontWeight:700,marginBottom:12,textAlign:"center"}}>
+              📬 Langkah Selanjutnya:
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {[
+                { n:"1", text:"Buka email kamu (" + props.email + ")", note:"Cek folder Inbox dan Spam" },
+                { n:"2", text:"Cari email dari NeuraTrade AI", note:"Subject: Your sign-in link" },
+                { n:"3", text:"Klik tombol Sign In di email", note:"Link berlaku 1 jam" },
+              ].map(function(s){
+                return(
+                  <div key={s.n} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                    <div style={{width:22,height:22,borderRadius:"50%",background:"rgba(0,80,200,.2)",border:"1px solid #1a4080",
+                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#5a90df",
+                      fontFamily:"'Orbitron',monospace",fontWeight:700,flexShrink:0}}>
+                      {s.n}
+                    </div>
+                    <div>
+                      <div style={{fontSize:10.5,color:"#5a8ad0",lineHeight:1.6}}>{s.text}</div>
+                      <div style={{fontSize:9,color:"#1e3a60"}}>{s.note}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {!isDemo && (
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{fontSize:9.5,color:"#1e3a60",padding:"8px 12px",background:"rgba(0,0,0,.3)",borderRadius:7,lineHeight:1.8}}>
+              Setelah klik link di email, kamu akan otomatis masuk ke app ini.
+            </div>
+            {resent && (
+              <div style={{fontSize:9.5,color:"#00e5a0",textAlign:"center"}}>✅ Email terkirim ulang!</div>
+            )}
+            <button onClick={resendLink}
+              style={{background:"transparent",border:"1px solid #1a3060",borderRadius:8,padding:"9px",
+                color:"#3a6aaa",cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",fontSize:10}}>
+              Kirim Ulang Email
+            </button>
+            <button onClick={function(){ window.location.reload(); }}
+              style={{background:"transparent",border:"1px solid #0a1428",borderRadius:8,padding:"7px",
+                color:"#1e3a60",cursor:"pointer",fontSize:9}}>
+              ← Ganti Email
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1975,6 +2174,13 @@ function Dashboard(props) {
               {user.tier==="trial"?"TRIAL"+(trialLeft>0?" "+trialLeft+"d":""):isPro?"PRO":"FREE"}
             </span>
           </div>
+          {config&&config.mode&&(
+            <div style={{display:"flex",alignItems:"center",gap:4,background:config.mode==="real"?"rgba(0,200,50,.08)":"rgba(0,60,200,.08)",border:"1px solid "+(config.mode==="real"?"#004422":"#1a3060"),borderRadius:20,padding:"2px 8px"}}>
+              <span style={{fontSize:7.5,color:config.mode==="real"?"#00e5a0":"#5a8ad0",fontFamily:"'Orbitron',monospace",letterSpacing:1}}>
+                {config.mode==="real"?"⚡ REAL":"🎮 DEMO"}
+              </span>
+            </div>
+          )}
           {/* Fix #1 — show AI calls left for free */}
           {!isPro&&<div style={{fontSize:8,color:"#3a5a30",background:"rgba(0,100,0,.1)",border:"1px solid #1a3a10",borderRadius:4,padding:"1px 7px"}}>AI: {aiCallsLeft}/3 hari ini</div>}
           {!isPro&&<button onClick={function(){setShowUpg(true);}} style={{background:"rgba(255,200,0,.1)",border:"1px solid #5a3800",borderRadius:5,padding:"2px 8px",color:"#ffa000",cursor:"pointer",fontSize:8,fontFamily:"'Share Tech Mono',monospace"}}>Upgrade</button>}
@@ -2442,19 +2648,19 @@ function saveKeys(cfg) {
     // Basic obfuscation (not encryption — do NOT use for production secrets)
     // In production: store keys server-side via backend, never in browser
     var encoded = btoa(JSON.stringify(toSave));
-    sessionStorage.setItem("nt_cfg", encoded);
+    localStorage.setItem("nt_cfg", encoded);
   } catch(e) {}
 }
 function loadKeys() {
   try {
-    var raw = sessionStorage.getItem("nt_cfg");
+    var raw = localStorage.getItem("nt_cfg");
     if (!raw) return null;
     var decoded = JSON.parse(atob(raw));
     return decoded;
   } catch(e) { return null; }
 }
 function clearKeys() {
-  try { sessionStorage.removeItem("nt_cfg"); } catch(e) {}
+  try { localStorage.removeItem("nt_cfg"); } catch(e) {}
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────
@@ -2483,8 +2689,8 @@ export default function App() {
           var email = payload.email;
           if (email) {
             // Save auth token
-            sessionStorage.setItem("nt_access_token", accessToken);
-            sessionStorage.setItem("nt_email", email);
+            localStorage.setItem("nt_access_token", accessToken);
+            localStorage.setItem("nt_email", email);
             setUser({email:email, tier:"free", trialExpiry:null});
             // Load real tier from backend
             fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(email))
@@ -2505,10 +2711,27 @@ export default function App() {
       }
     }
     
-    // Check saved session
-    var savedEmail = sessionStorage.getItem("nt_email");
+    // Check saved session — restore fully if config exists
+    var savedEmail = localStorage.getItem("nt_email");
     var savedKeys  = loadKeys();
-    if (savedEmail) {
+    if (savedEmail && savedKeys) {
+      // Restore user and config immediately → go to dashboard
+      setUser({email:savedEmail, tier:"free", trialExpiry:null});
+      setConfig(savedKeys);
+      setScreen("dashboard");
+      // Then refresh tier from backend in background
+      fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(savedEmail))
+        .then(function(r){return r.json();})
+        .then(function(data){
+          if(data && data.tier){
+            var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
+                       : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
+            setUser({email:savedEmail, tier:data.tier, trialExpiry:expiry});
+          }
+        }).catch(function(){});
+      return function(){};
+    } else if (savedEmail) {
+      // Have email but no config → go to setup
       setUser({email:savedEmail, tier:"free", trialExpiry:null});
       fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(savedEmail))
         .then(function(r){return r.json();})
@@ -2517,10 +2740,9 @@ export default function App() {
             var expiry = data.pro_expiry ? new Date(data.pro_expiry).getTime()
                        : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
             setUser({email:savedEmail, tier:data.tier, trialExpiry:expiry});
-            if(savedKeys) setScreen("dashboard");
-            else setScreen("setup");
           }
         }).catch(function(){});
+      setScreen("setup");
       return function(){};
     }
 
@@ -2532,12 +2754,13 @@ export default function App() {
     // Check demo emails
     if(_D.indexOf(email)!==-1){
       setUser({email:email,tier:"trial",trialExpiry:Date.now()+7*24*3600*1000});
-      setScreen("setup");
+      setPending(email);
+      setScreen("verify_demo"); // special demo verify
       return;
     }
     // Real Supabase magic link via REST API
-    var SUPA_URL  = "https://bgoezzoalgkoivygnoqp.supabase.co";
-    var SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnb2V6em9hbGdrb2l2eWdub3FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MjY2OTYsImV4cCI6MjA5NjIwMjY5Nn0.J4DMIxoK1gEQ9nr6oAkdzCvBp5VkOhOnNne6PLvh4zY";
+    var SUPA_URL  = "https://fxxclrcwpiyxrdjhjxdf.supabase.co";
+    var SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4eGNscmN3cGl5eHJkamhqeGRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYzNDQ0NTAsImV4cCI6MjA2MTkyMDQ1MH0.B4VT7uEAHm0C5BYWh7kP0JiDJVsQOVSXj38tVqKnJgY";
     try {
       var res = await fetch(SUPA_URL + "/auth/v1/otp", {
         method: "POST",
@@ -2600,8 +2823,8 @@ export default function App() {
   }
   function handleLogout(){
     clearKeys();
-    sessionStorage.removeItem("nt_email");
-    sessionStorage.removeItem("nt_access_token");
+    localStorage.removeItem("nt_email");
+    localStorage.removeItem("nt_access_token");
     setUser(null);setConfig(null);setScreen("login");
   }
 
@@ -2666,7 +2889,8 @@ export default function App() {
       `}</style>
       {screen==="splash"&&<SplashScreen/>}
       {screen==="login"&&<LoginScreen onLogin={handleLogin}/>}
-      {screen==="verify"&&<VerifyScreen email={pending} onVerified={handleVerified}/>}
+      {screen==="verify"&&<VerifyScreen email={pending} isDemo={false} onVerified={handleVerified}/>}
+      {screen==="verify_demo"&&<VerifyScreen email={pending} isDemo={true} onVerified={function(){setUser({email:pending,tier:"trial",trialExpiry:Date.now()+7*24*3600*1000});setScreen("setup");}}/>}
       {screen==="setup"&&user&&<SetupScreen onDone={handleSetupDone}/>}
       {showDisclaimer&&config&&(
         <DisclaimerModal onAccept={function(){
