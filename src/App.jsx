@@ -16,16 +16,16 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── ADMIN CONFIG — edit sesuai data kamu ─────────────────────
 var ADMIN_QRIS_URL  = "https://ibb.co.com/yFtwBRWp";
-var ADMIN_WA        = "628123456789";
+var ADMIN_WA        = "6282250931638";
 var ADMIN_NAMA      = "NeuraTrade AI";
 var ADMIN_BANK      = [
-  { bank:"BCA",     no:"1234567890", atas:ADMIN_NAMA },
-  { bank:"Mandiri", no:"9876543210", atas:ADMIN_NAMA },
+  { bank:"BCA",     no:"none", atas:ADMIN_NAMA },
+  { bank:"Mandiri", no:"none", atas:ADMIN_NAMA },
 ];
 var ADMIN_EWALLET = [
-  { name:"GoPay", no:"0812-3456-7890", color:"#00aad4" },
-  { name:"OVO",   no:"0812-3456-7890", color:"#4c2a7e" },
-  { name:"Dana",  no:"0812-3456-7890", color:"#118eed" },
+  { name:"GoPay", no:"0822-5093-1638", color:"#00aad4" },
+  { name:"OVO",   no:"none", color:"#4c2a7e" },
+  { name:"Dana",  no:"none", color:"#118eed" },
 ];
 // Fix #20 — email demo tidak hardcode di konstanta publik
 var _D = ["demo@neuratrade.ai","test@gmail.com"];
