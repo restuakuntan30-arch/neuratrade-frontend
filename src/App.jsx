@@ -1883,8 +1883,51 @@ function Dashboard(props) {
   var [chartTF,      setChartTF]      = useState("5m");
   var [tfOhlc,       setTfOhlc]       = useState([]);
   var [backendActive,setBackendActive]= useState(false);
-  var [slPct,        setSlPct]        = useState(2);   // Stop-loss %
-  var [tpPct,        setTpPct]        = useState(4);   // Take-profit %
+  var [slPct,        setSlPct]        = useState(2);
+  var [tpPct,        setTpPct]        = useState(4);
+
+  // ── 24/7 Backend Trading Toggle (inside Dashboard) ───────────
+  async function toggleBackendTrading() {
+    var BACKEND = "https://neuratrade-backend.onrender.com";
+    if (backendActive) {
+      try {
+        await fetch(BACKEND + "/api/trading/stop", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ email: user.email }),
+        });
+      } catch(e) {}
+      setBackendActive(false);
+    } else {
+      if (!config || config.mode !== "real") {
+        alert("24/7 trading hanya tersedia di mode Real Trading.\nPilih mode Real saat setup dan masukkan API Key exchange.");
+        return;
+      }
+      try {
+        var res = await fetch(BACKEND + "/api/trading/start", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({
+            email:     user.email,
+            apiKey:    config.apiKey    || "",
+            secretKey: config.secretKey || "",
+            exchange:  (config.exchange && config.exchange.name ? config.exchange.name : "binance").toLowerCase(),
+            settings:  Object.assign({}, settings||{}, { balance: portfolio.bal }),
+            aiKey:     config.anthropicKey || "",
+            aiModel:   config.aiModel || "groq_free",
+            waNumber:  (settings && settings.waNumber) || "",
+          }),
+        });
+        var data = await res.json();
+        if (data.ok) {
+          setBackendActive(true);
+          alert("✅ Backend 24/7 aktif!\nAI akan trading otomatis meski browser ditutup.");
+        } else {
+          alert("Gagal: " + (data.error || "Coba lagi"));
+        }
+      } catch(e) {
+        alert("Gagal koneksi backend: " + e.message);
+      }
+    }
+  }
   var [viewPair, setViewPair] = useState(ALL_PAIRS[0]);
   var [prices,   setPrices]   = useState({});
   var [history,  setHistory]  = useState({});
@@ -3304,49 +3347,6 @@ export default function App() {
   function handleTrialExpired(){
     setUser(function(prev){return Object.assign({},prev,{tier:"free",trialExpiry:null});});
   }
-  // ── 24/7 Backend Trading Toggle ──
-  async function toggleBackendTrading() {
-    var BACKEND = "https://neuratrade-backend.onrender.com";
-    if (backendActive) {
-      try {
-        await fetch(BACKEND + "/api/trading/stop", {
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ email: user.email }),
-        });
-      } catch(e) {}
-      setBackendActive(false);
-    } else {
-      if (!config || config.mode !== "real") {
-        alert("24/7 trading hanya tersedia di mode Real Trading dengan API key aktif.");
-        return;
-      }
-      try {
-        var res = await fetch(BACKEND + "/api/trading/start", {
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({
-            email:     user.email,
-            apiKey:    config.apiKey,
-            secretKey: config.secretKey,
-            exchange:  config.exchange?.name?.toLowerCase() || "binance",
-            settings:  Object.assign({}, settings, { balance: portfolio.bal }),
-            aiKey:     config.anthropicKey,
-            aiModel:   config.aiModel,
-            waNumber:  "",
-          }),
-        });
-        var data = await res.json();
-        if (data.ok) {
-          setBackendActive(true);
-          alert("✅ Backend 24/7 trading aktif! AI akan trading otomatis meski browser ditutup.");
-        } else {
-          alert("Gagal: " + (data.error || "Unknown error"));
-        }
-      } catch(e) {
-        alert("Gagal koneksi ke backend: " + e.message);
-      }
-    }
-  }
-
   function handleLogout(){
     // Hapus SEMUA data sesi - hanya terjadi saat user klik Logout
     try {
@@ -3358,7 +3358,6 @@ export default function App() {
     } catch(e) {}
     setUser(null);
     setConfig(null);
-    setBackendActive(false);
     setAppReady(true);
     setScreen("login");
   }
