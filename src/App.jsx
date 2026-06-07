@@ -16,16 +16,16 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── ADMIN CONFIG — edit sesuai data kamu ─────────────────────
 var ADMIN_QRIS_URL  = "https://ibb.co.com/yFtwBRWp";
-var ADMIN_WA        = "6282250931638";
+var ADMIN_WA        = "628123456789";
 var ADMIN_NAMA      = "NeuraTrade AI";
 var ADMIN_BANK      = [
-  { bank:"BCA",     no:"none", atas:ADMIN_NAMA },
-  { bank:"Mandiri", no:"none", atas:ADMIN_NAMA },
+  { bank:"BCA",     no:"1234567890", atas:ADMIN_NAMA },
+  { bank:"Mandiri", no:"9876543210", atas:ADMIN_NAMA },
 ];
 var ADMIN_EWALLET = [
-  { name:"GoPay", no:"0822-5093-1638", color:"#00aad4" },
-  { name:"OVO",   no:"none", color:"#4c2a7e" },
-  { name:"Dana",  no:"none", color:"#118eed" },
+  { name:"GoPay", no:"0812-3456-7890", color:"#00aad4" },
+  { name:"OVO",   no:"0812-3456-7890", color:"#4c2a7e" },
+  { name:"Dana",  no:"0812-3456-7890", color:"#118eed" },
 ];
 // Fix #20 — email demo tidak hardcode di konstanta publik
 var _D = ["demo@neuratrade.ai","test@gmail.com"];
@@ -2568,11 +2568,27 @@ function Dashboard(props) {
         </div>
       </div>
 
-      <div style={{flex:1,overflow:"hidden"}}>
+      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"row"}}>
 
+        {/* Desktop sidebar - in flow */}
+        <div className="nt-desktop-nav">
+          <div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,padding:"14px 14px 12px",borderBottom:"1px solid #080f22",marginBottom:8}}>
+            <span style={{background:"linear-gradient(135deg,#0080ff,#00e5a0)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>NEURA</span>
+            <span style={{background:"linear-gradient(135deg,#ff4d6d,#ff8f6b)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TRADE</span>
+          </div>
+          <div style={{padding:"0 8px"}}>
+          {[{id:"trade",icon:"📊",label:"Trading"},{id:"history",icon:"📋",label:"History"},{id:"pro",icon:"⭐",label:isPro?"PRO":"Upgrade"}].map(function(tab){
+            var isAct=navTab===tab.id;
+            return <button key={tab.id} onClick={function(){setNavTab(tab.id);}} className={isAct?"active":""}>
+              <span style={{fontSize:16}}>{tab.icon}</span>{tab.label}
+            </button>;
+          })}
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"0"}}>
         {/* TRADE TAB */}
         {navTab==="trade"&&(
-          <div style={{height:"100%",overflow:"auto",padding:"10px 12px"}}>
+          <div style={{height:"100%",overflowY:"auto",overflowX:"hidden",padding:"10px 12px"}}>
             <div style={{marginBottom:10}}>
               {/* Real balance banner for real mode */}
               {config && config.mode === "real" && (
@@ -2899,7 +2915,7 @@ function Dashboard(props) {
 
         {/* HISTORY TAB — Fix #7 #10 */}
         {navTab==="history"&&(
-          <div style={{height:"100%",overflow:"auto",padding:"10px 12px"}}>
+          <div style={{height:"100%",overflowY:"auto",overflowX:"hidden",padding:"10px 12px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
               <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,color:"#5a9fff",fontWeight:700}}>History & Backtest</div>
               {trades.length>0&&<button onClick={exportCSV} style={{background:"rgba(0,80,200,.15)",border:"1px solid #1a4080",borderRadius:6,padding:"5px 12px",color:"#5a90df",cursor:"pointer",fontSize:9,fontFamily:"'Share Tech Mono',monospace"}}>Export CSV</button>}
@@ -2978,28 +2994,28 @@ function Dashboard(props) {
 
         {/* PRO TAB */}
         {navTab==="pro"&&(
-          <div style={{height:"100%",overflow:"auto",padding:"10px 12px"}}>
+          <div style={{height:"100%",overflowY:"auto",overflowX:"hidden",padding:"10px 12px"}}>
             <UpgradeScreen user={user} onClose={function(){setNavTab("trade");}} onUpgrade={function(plan){
               if(plan.id==="trial"){props.onUpgrade(plan.id);setNavTab("trade");return;}
               setPayPlan(plan);setShowPay(true);
             }}/>
           </div>
         )}
+        </div>
       </div>
 
-      {/* Desktop sidebar nav */}
-      <div className="nt-desktop-nav" style={{position:"fixed",left:0,top:0,bottom:0,zIndex:50}}>
-        <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:900,letterSpacing:2,padding:"12px 4px 20px"}}>
-          <span style={{background:"linear-gradient(135deg,#0080ff,#00e5a0)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>NEURA</span>
-          <span style={{background:"linear-gradient(135deg,#ff4d6d,#ff8f6b)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TRADE</span>
-        </div>
-        {[{id:"trade",icon:"📊",label:"Trading"},{id:"history",icon:"📋",label:"History"},{id:"pro",icon:"⭐",label:isPro?"PRO":"Upgrade"}].map(function(tab){
-          var isAct=navTab===tab.id;
-          return <button key={tab.id} onClick={function(){setNavTab(tab.id);}} className={isAct?"active":""}>
-            <span style={{fontSize:18}}>{tab.icon}</span>{tab.label}
-          </button>;
-        })}
-      </div>
+
+
+
+
+
+
+
+
+
+
+
+
 
       {/* Bottom nav (mobile only) */}
       <div style={{borderTop:"1px solid #080f22",background:"rgba(1,3,12,.98)",display:"grid",gridTemplateColumns:"repeat(3,1fr)",flexShrink:0}} className="nt-bottom-nav">
