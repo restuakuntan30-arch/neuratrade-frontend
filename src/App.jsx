@@ -2618,9 +2618,9 @@ function Dashboard(props) {
                   {l:"AI CALLS",v:tokenUsage.calls,c:"#b06aff"},
                 ].map(function(s){
                   return(
-                    <div key={s.l} style={{background:"rgba(2,5,16,.96)",border:"1px solid #080e22",borderRadius:7,padding:"7px 6px",textAlign:"center"}}>
-                      <div style={{fontSize:7,color:"#152040",letterSpacing:1.5}}>{s.l}</div>
-                      <div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,color:s.c,marginTop:3}}>{s.v}</div>
+                    <div key={s.l} style={{background:"rgba(2,5,16,.96)",border:"1px solid #0a1428",borderRadius:8,padding:"8px 6px",textAlign:"center"}}>
+                      <div style={{fontSize:7.5,color:"#1e3a60",letterSpacing:1,marginBottom:4}}>{s.l}</div>
+                      <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:900,color:s.c}}>{s.v}</div>
                     </div>
                   );
                 })}
@@ -3423,9 +3423,9 @@ export default function App() {
         /* Desktop nav sidebar */
         .nt-desktop-nav {
           flex-direction: column;
-          gap: 3px;
-          padding: 16px 10px;
-          background: rgba(1,3,12,.98);
+          gap: 4px;
+          padding: 0;
+          background: rgba(1,3,12,.99);
           border-right: 1px solid #0a1428;
           height: 100vh;
           width: 180px;
@@ -3435,26 +3435,38 @@ export default function App() {
           z-index: 50;
           overflow-y: auto;
         }
+        .nt-desktop-nav .nav-logo {
+          padding: 16px 14px 12px;
+          border-bottom: 1px solid #080f22;
+          margin-bottom: 8px;
+        }
+        .nt-desktop-nav .nav-section {
+          padding: 0 10px;
+          flex: 1;
+        }
         .nt-desktop-nav button {
           display: flex; align-items: center; gap: 10px;
-          padding: 10px 12px; border-radius: 8px;
+          padding: 9px 12px; border-radius: 8px;
           background: transparent; border: 1px solid transparent; cursor: pointer;
           text-align: left; color: #2a4a70;
           font-family: 'Share Tech Mono', monospace; font-size: 11px;
           transition: all .15s; width: 100%;
+          margin-bottom: 2px;
         }
         .nt-desktop-nav button.active {
-          background: rgba(0,80,200,.2); 
+          background: rgba(0,80,200,.18);
           border-color: #1a4080;
           color: #7ab0ff;
         }
-        .nt-desktop-nav button:hover {
-          background: rgba(0,80,200,.1); color: #5a90df;
+        .nt-desktop-nav button:hover:not(.active) {
+          background: rgba(255,255,255,.04);
+          color: #4a6a90;
         }
         @media (min-width: 768px) {
           .nt-desktop-nav { display: flex !important; }
           .nt-bottom-nav { display: none !important; }
-          .nt-main-content { margin-left: 180px; }
+          .nt-main-content { margin-left: 180px !important; }
+          .nt-topbar { padding-left: 196px !important; }
         }
       `}</style>
       {screen==="splash"&&<SplashScreen/>}
