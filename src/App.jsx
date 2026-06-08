@@ -15,8 +15,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // ═══════════════════════════════════════════════════════════════
 
 // ─── ADMIN CONFIG — edit sesuai data kamu ─────────────────────
-var ADMIN_QRIS_URL  = "https://ibb.co.com/yFtwBRWp";
-var ADMIN_WA        = "6282250931638";
+var ADMIN_QRIS_URL  = "";
+var ADMIN_WA        = "628123456789";
 var ADMIN_NAMA      = "NeuraTrade AI";
 var ADMIN_BANK      = [
   { bank:"BCA",     no:"1234567890", atas:ADMIN_NAMA },
@@ -1335,16 +1335,19 @@ function SetupScreen(props) {
 
   function submit() {
     var b = parseFloat(bal);
-    if (!b || b < 10) { setErr("Modal minimal $10"); return; }
+    if (!b || b < 10) {
+      alert("⚠️ Modal minimal $10. Isi kolom modal trading terlebih dahulu.");
+      setErr("Modal minimal $10"); return;
+    }
     if (mode === "real") {
       var isMt5 = selEx.cred === "mt5";
       if (isMt5) {
-        if (!mt5Login.trim())  { setErr("Login (nomor akun) wajib diisi"); return; }
-        if (!mt5Server.trim()) { setErr("Server broker wajib diisi"); return; }
-        if (!mt5Pass.trim())   { setErr("Kata sandi trading wajib diisi"); return; }
+        if (!mt5Login.trim())  { alert("⚠️ Login (nomor akun) MT5 wajib diisi");  setErr("Login (nomor akun) wajib diisi"); return; }
+        if (!mt5Server.trim()) { alert("⚠️ Server broker MT5 wajib diisi"); setErr("Server broker wajib diisi"); return; }
+        if (!mt5Pass.trim())   { alert("⚠️ Kata sandi trading wajib diisi"); setErr("Kata sandi trading wajib diisi"); return; }
       } else {
-        if (!apiKey.trim())    { setErr("API Key wajib diisi untuk mode Real Trading"); return; }
-        if (!secret.trim())    { setErr("Secret Key wajib diisi untuk mode Real Trading"); return; }
+        if (!apiKey.trim())    { alert("⚠️ API Key Binance/Exchange wajib diisi\nAmbil di: binance.com > API Management"); setErr("API Key wajib diisi"); return; }
+        if (!secret.trim())    { alert("⚠️ Secret Key Binance/Exchange wajib diisi\nSecret Key berbeda dengan API Key!\nKeduanya harus diisi."); setErr("Secret Key wajib diisi"); return; }
       }
     }
     setErr("");
@@ -3113,45 +3116,25 @@ function Dashboard(props) {
 // ─── FIX 12: Regulatory Disclaimer ──────────────────────────────
 function DisclaimerModal(props) {
   var onAccept = props.onAccept;
-  var [checked1, setChecked1] = useState(false);
-  var [checked2, setChecked2] = useState(false);
-  var [checked3, setChecked3] = useState(false);
-  var allChecked = checked1 && checked2 && checked3;
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(1,2,10,.98)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{width:"100%",maxWidth:460,background:"#030610",border:"1px solid #3a0000",borderRadius:18,padding:26}}>
-        <div style={{textAlign:"center",marginBottom:18}}>
-          <div style={{fontSize:32,marginBottom:8}}>⚠️</div>
-          <div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:"#ff4d6d",fontWeight:700,marginBottom:4}}>PERINGATAN RISIKO</div>
-          <div style={{fontSize:9,color:"#3a1a1a",letterSpacing:1.5}}>WAJIB DIBACA SEBELUM TRADING</div>
+      <div style={{width:"100%",maxWidth:440,background:"#030610",border:"1px solid #1a3060",borderRadius:14,padding:24}}>
+        <div style={{fontSize:28,textAlign:"center",marginBottom:12}}>⚠️</div>
+        <div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:"#ff9a00",fontWeight:700,textAlign:"center",marginBottom:16,letterSpacing:1}}>
+          DISCLAIMER RISIKO TRADING
         </div>
-        <div style={{background:"rgba(80,0,0,.15)",border:"1px solid #3a0000",borderRadius:9,padding:14,marginBottom:16,fontSize:10,color:"#8a3a3a",lineHeight:1.9}}>
-          <strong style={{color:"#ff6b6b"}}>NeuraTrade adalah alat bantu analisis, BUKAN jaminan profit.</strong><br/>
-          Trading aset keuangan mengandung risiko kehilangan modal yang besar. AI dapat salah. Past performance tidak menjamin hasil masa depan. Jangan trading dengan uang yang tidak siap kamu kehilangan.
+        <div style={{fontSize:10,color:"#3a5a80",lineHeight:1.9,marginBottom:20}}>
+          • Trading forex, crypto, dan komoditas mengandung <strong style={{color:"#ff4d6d"}}>risiko kehilangan modal</strong><br/>
+          • AI NeuraTrade bukan jaminan profit — keputusan akhir tetap di tangan Anda<br/>
+          • Pastikan API Key benar dan saldo exchange mencukupi sebelum mulai<br/>
+          • Gunakan hanya modal yang siap Anda tanggung risikonya
         </div>
-        <div style={{marginBottom:16}}>
-          {[
-            { key:"c1", val:checked1, set:setChecked1, text:"Saya memahami bahwa trading mengandung risiko tinggi dan bisa menyebabkan kerugian total modal saya." },
-            { key:"c2", val:checked2, set:setChecked2, text:"Saya mengerti keuntungan trading di Indonesia wajib dilaporkan dan dikenai pajak (PPh)." },
-            { key:"c3", val:checked3, set:setChecked3, text:"Saya menggunakan NeuraTrade sebagai alat bantu, bukan sebagai satu-satunya dasar keputusan investasi." },
-          ].map(function(item){
-            return (
-              <div key={item.key} onClick={function(){item.set(!item.val);}}
-                style={{display:"flex",gap:10,alignItems:"flex-start",padding:"8px 10px",marginBottom:6,background:"rgba(255,255,255,.02)",border:"1px solid "+(item.val?"#005530":"#1a0000"),borderRadius:8,cursor:"pointer"}}>
-                <div style={{width:18,height:18,borderRadius:4,background:item.val?"#00e5a0":"#020508",border:"2px solid "+(item.val?"#00e5a0":"#3a1a1a"),flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginTop:1}}>
-                  {item.val&&<span style={{fontSize:12,color:"#020508",fontWeight:700}}>✓</span>}
-                </div>
-                <span style={{fontSize:9.5,color:item.val?"#3a7a50":"#5a2a2a",lineHeight:1.7}}>{item.text}</span>
-              </div>
-            );
-          })}
-        </div>
-        <button onClick={function(){if(allChecked)onAccept();}} disabled={!allChecked}
-          style={{width:"100%",background:allChecked?"linear-gradient(135deg,#003ab0,#006eff)":"#0a1428",border:"none",borderRadius:10,padding:13,color:allChecked?"#fff":"#1a3060",fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,cursor:allChecked?"pointer":"default",letterSpacing:1}}>
-          {allChecked?"Saya Mengerti — Mulai Trading":"Centang semua pernyataan di atas"}
+        <button onClick={onAccept}
+          style={{width:"100%",background:"linear-gradient(135deg,#003500,#007700)",border:"none",borderRadius:10,padding:14,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1}}>
+          ✓ Saya Mengerti — Mulai Trading
         </button>
-        <div style={{textAlign:"center",fontSize:8,color:"#1a0a0a",marginTop:8,lineHeight:1.7}}>
-          Dengan melanjutkan, kamu menyetujui Terms of Service NeuraTrade.
+        <div style={{textAlign:"center",fontSize:8,color:"#1a3060",marginTop:10}}>
+          Dengan melanjutkan, Anda menyetujui bahwa NeuraTrade tidak bertanggung jawab atas kerugian trading
         </div>
       </div>
     </div>
