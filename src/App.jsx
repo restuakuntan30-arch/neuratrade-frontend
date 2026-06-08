@@ -3157,6 +3157,37 @@ function saveKeys(cfg) {
     localStorage.setItem("nt_cfg", encoded);
   } catch(e) {}
 }
+// ── SESSION STORAGE v3 (plain JSON, reliable) ─────────────────
+var NT_SESSION_KEY = "nt_v3_session";
+
+function saveSession(email, tier, cfg) {
+  try {
+    localStorage.setItem(NT_SESSION_KEY, JSON.stringify({
+      email: email, tier: tier || "free", cfg: cfg, ts: Date.now()
+    }));
+    return true;
+  } catch(e) { return false; }
+}
+
+function loadSession() {
+  try {
+    var raw = localStorage.getItem(NT_SESSION_KEY);
+    if (!raw) return null;
+    var s = JSON.parse(raw);
+    if (!s || !s.email || !s.cfg || !s.cfg.mode) return null;
+    return s;
+  } catch(e) { return null; }
+}
+
+function clearSession() {
+  try {
+    localStorage.removeItem(NT_SESSION_KEY);
+    ["nt_cfg","nt_email","nt_tier","nt_expiry","nt_token","nt_access_token","nt_cfg_raw"].forEach(function(k){
+      try { localStorage.removeItem(k); } catch(e) {}
+    });
+  } catch(e) {}
+}
+
 function loadKeys() {
   // Try primary storage
   try {
