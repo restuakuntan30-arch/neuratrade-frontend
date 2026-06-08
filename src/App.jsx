@@ -15,17 +15,17 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // ═══════════════════════════════════════════════════════════════
 
 // ─── ADMIN CONFIG — edit sesuai data kamu ─────────────────────
-var ADMIN_QRIS_URL  = "https://ibb.co.com/yFtwBRWp";
-var ADMIN_WA        = "6282250931638";
+var ADMIN_QRIS_URL  = "";
+var ADMIN_WA        = "628123456789";
 var ADMIN_NAMA      = "NeuraTrade AI";
 var ADMIN_BANK      = [
-  { bank:"BCA",     no:"none", atas:ADMIN_NAMA },
-  { bank:"Mandiri", no:"none", atas:ADMIN_NAMA },
+  { bank:"BCA",     no:"1234567890", atas:ADMIN_NAMA },
+  { bank:"Mandiri", no:"9876543210", atas:ADMIN_NAMA },
 ];
 var ADMIN_EWALLET = [
-  { name:"GoPay", no:"none", color:"#00aad4" },
-  { name:"OVO",   no:"none", color:"#4c2a7e" },
-  { name:"Dana",  no:"none", color:"#118eed" },
+  { name:"GoPay", no:"0812-3456-7890", color:"#00aad4" },
+  { name:"OVO",   no:"0812-3456-7890", color:"#4c2a7e" },
+  { name:"Dana",  no:"0812-3456-7890", color:"#118eed" },
 ];
 // Fix #20 — email demo tidak hardcode di konstanta publik
 var _D = ["demo@neuratrade.ai","test@gmail.com"];
@@ -473,12 +473,13 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
         }
       }
     } catch(groqErr) {
-      // Re-throw only specific known errors; anything else → silent fallback
-      if (groqErr.message === "RATE_LIMIT" || groqErr.message === "INVALID_API_KEY") {
-        throw groqErr;
+      if (groqErr.message === "RATE_LIMIT") throw groqErr;
+      if (groqErr.message === "INVALID_API_KEY") throw groqErr;
+      // CORS / network error dari browser → set flag tapi coba Anthropic fallback
+      if (groqErr.name === "TypeError" || groqErr.message.includes("Failed to fetch") || groqErr.message.includes("CORS")) {
+        console.warn("Groq CORS blocked - falling back to Anthropic");
       }
-      // Network/CORS/timeout → fall through to Anthropic below
-      rawText = null;
+      rawText = null; // fall through to Anthropic
     }
   }
 
@@ -491,6 +492,14 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
       system: sysPrompt,
       messages: [{ role: "user", content: prompt }],
     };
+    // Build headers - use user's Anthropic key if available, otherwise try without (artifact mode)
+    var anthHeaders = {
+      "Content-Type": "application/json",
+      "anthropic-version": "2023-06-01",
+    };
+    if (extras && extras.anthropicKey) {
+      anthHeaders["x-api-key"] = extras.anthropicKey;
+    }
     var anthRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
