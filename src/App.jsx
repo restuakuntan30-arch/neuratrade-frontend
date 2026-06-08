@@ -1334,23 +1334,24 @@ function SetupScreen(props) {
   var [apiVisible, setApiVisible] = useState(false);
 
   function submit() {
-    var b = parseFloat(bal);
-    if (!b || b < 10) {
-      alert("⚠️ Modal minimal $10. Isi kolom modal trading terlebih dahulu.");
-      setErr("Modal minimal $10"); return;
-    }
-    if (mode === "real") {
-      var isMt5 = selEx.cred === "mt5";
-      if (isMt5) {
-        if (!mt5Login.trim())  { alert("⚠️ Login (nomor akun) MT5 wajib diisi");  setErr("Login (nomor akun) wajib diisi"); return; }
-        if (!mt5Server.trim()) { alert("⚠️ Server broker MT5 wajib diisi"); setErr("Server broker wajib diisi"); return; }
-        if (!mt5Pass.trim())   { alert("⚠️ Kata sandi trading wajib diisi"); setErr("Kata sandi trading wajib diisi"); return; }
-      } else {
-        if (!apiKey.trim())    { alert("⚠️ API Key Binance/Exchange wajib diisi\nAmbil di: binance.com > API Management"); setErr("API Key wajib diisi"); return; }
-        if (!secret.trim())    { alert("⚠️ Secret Key Binance/Exchange wajib diisi\nSecret Key berbeda dengan API Key!\nKeduanya harus diisi."); setErr("Secret Key wajib diisi"); return; }
+    try {
+      var b = parseFloat(bal) || 0;
+      if (b < 10) {
+        alert("⚠️ Modal minimal $10. Scroll ke atas dan isi kolom modal trading.");
+        setErr("Modal minimal $10"); return;
       }
-    }
-    setErr("");
+      if (mode === "real") {
+        var isMt5 = selEx && selEx.cred === "mt5";
+        if (isMt5) {
+          if (!mt5Login.trim())  { alert("⚠️ Login MT5 wajib diisi");  setErr("Login wajib"); return; }
+          if (!mt5Server.trim()) { alert("⚠️ Server MT5 wajib diisi"); setErr("Server wajib"); return; }
+          if (!mt5Pass.trim())   { alert("⚠️ Password MT5 wajib diisi"); setErr("Password wajib"); return; }
+        } else {
+          if (!apiKey.trim())    { alert("⚠️ API Key wajib diisi"); setErr("API Key wajib"); return; }
+          if (!secret.trim())    { alert("⚠️ Secret Key wajib diisi!\nBeda dengan API Key - keduanya harus diisi."); setErr("Secret Key wajib"); return; }
+        }
+      }
+      setErr("");
     onDone({
       mode:         mode,
       balance:      b,
@@ -1363,7 +1364,7 @@ function SetupScreen(props) {
       aiModel:      aiModel,
       exchange:     selEx,
       scope:        scope,
-    });
+    });    } catch(e) { alert("Error: " + e.message); }
   }
 
   // ── STEP 1: Choose mode ──
@@ -1618,7 +1619,8 @@ function SetupScreen(props) {
 
         {err && <div style={{ fontSize:9.5,color:"#ff7a30",marginBottom:10,padding:"7px 12px",background:"rgba(80,20,0,.3)",border:"1px solid #6a2000",borderRadius:6 }}>[!] {err}</div>}
 
-        <button onClick={submit}
+        <button onClick={function(e){ e.preventDefault(); e.stopPropagation(); submit(); }}
+          type="button"
           style={{ width:"100%",background:isReal?"linear-gradient(135deg,#003500,#007700)":"linear-gradient(135deg,#003ab0,#006eff)",border:"none",borderRadius:10,padding:14,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:1 }}>
           {isReal ? "⚡ Mulai Real Trading" : "🎮 Mulai Demo Trading"}
         </button>
@@ -2603,7 +2605,7 @@ function Dashboard(props) {
   var aiCallsLeft=isPro?null:3-aiLimit.count;
 
   return(
-    <div className="nt-dash">
+    <div className="nt-dash" translate="no">
 
       {/* Top bar */}
       <div className="nt-topbar">
@@ -3445,11 +3447,16 @@ export default function App() {
   function addMagicLog(msg){ console.log("[Auth]", msg); }
   function handleSetupDone(cfg){
     setConfig(cfg);
-    // Simpan sesi - user tidak perlu login ulang setelah close browser
-    if (user && user.email) {
-      saveSession(user.email, user.tier || "free", cfg);
+    // Simpan sesi
+    var emailToSave = (user && user.email) ? user.email : localStorage.getItem("nt_email") || "";
+    var tierToSave  = (user && user.tier)  ? user.tier  : localStorage.getItem("nt_tier")  || "free";
+    if (emailToSave) {
+      saveSession(emailToSave, tierToSave, cfg);
+      localStorage.setItem("nt_email", emailToSave);
     }
-    setShowDisclaimer(true);
+    // Langsung ke dashboard tanpa modal disclaimer
+    setAppReady(true);
+    setScreen("dashboard");
   }
   // Fix #15 — proper yearly/monthly distinction
   function handleUpgrade(planId){
@@ -3493,7 +3500,7 @@ export default function App() {
   }
 
   return(
-    <div style={{fontFamily:"'Share Tech Mono',monospace",position:"fixed",inset:0,background:"#020810"}}>
+    <div style={{fontFamily:"'Share Tech Mono',monospace",position:"fixed",inset:0,background:"#020810"}} translate="no">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
