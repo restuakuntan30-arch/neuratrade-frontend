@@ -23,7 +23,7 @@ var ADMIN_BANK      = [
   { bank:"Mandiri", no:"none", atas:ADMIN_NAMA },
 ];
 var ADMIN_EWALLET = [
-  { name:"GoPay", no:"0822-5093-1638", color:"#00aad4" },
+  { name:"GoPay", no:"none", color:"#00aad4" },
   { name:"OVO",   no:"none", color:"#4c2a7e" },
   { name:"Dana",  no:"none", color:"#118eed" },
 ];
@@ -1925,6 +1925,15 @@ function Dashboard(props) {
       }
     }
   }
+
+  // Kirim notifikasi ke Telegram via CallMeBot (gratis, no API key)
+  function sendTelegramNotif(message) {
+    var username = (settings && settings.waNumber) || "";
+    if (!username) return;
+    var user = username.replace(/^@/, "");
+    fetch("https://api.callmebot.com/text.php?user=@" + user + "&text=" + encodeURIComponent(message))
+      .catch(function(){});
+  }
   var [viewPair, setViewPair] = useState(ALL_PAIRS[0]);
   var [prices,   setPrices]   = useState({});
   var [history,  setHistory]  = useState({});
@@ -1978,8 +1987,7 @@ function Dashboard(props) {
 
     if (isMt5) {
       // MT5 exchange (Exness, IC Markets, dll) tidak support REST balance API
-      setBalError("Exchange " + (cfg.exchange ? cfg.exchange.name : "MT5") + " menggunakan MT5 — saldo tidak bisa diambil otomatis.
-Gunakan Binance/ByBit untuk saldo real-time.");
+      setBalError("Exchange " + (cfg.exchange ? cfg.exchange.name : "MT5") + " menggunakan MT5 - saldo tidak bisa diambil otomatis. Gunakan Binance/ByBit untuk saldo real-time.");
       return;
     }
 
@@ -2645,7 +2653,7 @@ Gunakan Binance/ByBit untuk saldo real-time.");
                       </div>
                     ) : (
                       <div style={{fontSize:9.5,color:"#1e3a60",lineHeight:1.7}}>
-                        Belum terhubung — klik 🔄 untuk coba ambil saldo
+                        Belum terhubung - klik 🔄 untuk coba ambil saldo
                       </div>
                     )}
                   </div>
@@ -3131,12 +3139,31 @@ function saveKeys(cfg) {
   } catch(e) {}
 }
 function loadKeys() {
+  // Try primary storage
   try {
     var raw = localStorage.getItem("nt_cfg");
-    if (!raw) return null;
-    var decoded = JSON.parse(atob(raw));
-    return decoded;
-  } catch(e) { return null; }
+    if (raw) {
+      var decoded = JSON.parse(atob(raw));
+      if (decoded && decoded.mode) return decoded;
+    }
+  } catch(e) {}
+  // Try fallback (URL-encoded btoa)
+  try {
+    var raw2 = localStorage.getItem("nt_cfg");
+    if (raw2) {
+      var decoded2 = JSON.parse(decodeURIComponent(atob(raw2)));
+      if (decoded2 && decoded2.mode) return decoded2;
+    }
+  } catch(e) {}
+  // Try raw JSON fallback
+  try {
+    var raw3 = localStorage.getItem("nt_cfg_raw");
+    if (raw3) {
+      var decoded3 = JSON.parse(raw3);
+      if (decoded3 && decoded3.mode) return decoded3;
+    }
+  } catch(e) {}
+  return null;
 }
 function clearKeys() {
   try { localStorage.removeItem("nt_cfg"); } catch(e) {}
