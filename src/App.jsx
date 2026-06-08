@@ -848,22 +848,33 @@ function SettingsModal(props) {
       <div className="nt-settings-body">
         <div style={{maxWidth:480,margin:"0 auto"}}>
 
-          {/* AI Model selector */}
-          <div style={{background:"rgba(60,20,80,.15)",border:"1px solid #3a1a5a",borderRadius:8,padding:12,marginBottom:16}}>
-            <div style={{fontSize:9,color:"#b06aff",letterSpacing:1.5,marginBottom:8}}>AI MODEL AKTIF</div>
+          {/* AI Provider selector */}
+          <div style={{background:"rgba(20,30,60,.3)",border:"1px solid #1a2a50",borderRadius:8,padding:12,marginBottom:16}}>
+            <div style={{fontSize:9,color:"#7ab0ff",letterSpacing:1.5,marginBottom:8}}>AI PROVIDER</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-              {AI_MODELS.map(function(m){
-                var isSel = local.aiModel ? local.aiModel===m.id : m.id.includes("haiku");
+              {AI_PROVIDERS.map(function(m){
+                var isSel = local.aiModel ? local.aiModel===m.id : m.id==="groq_free";
                 return(
                   <button key={m.id} onClick={function(){setLocal(function(p){var s=Object.assign({},p);s.aiModel=m.id;return s;});}}
-                    style={{background:isSel?m.color+"15":"#020508",border:"1px solid "+(isSel?m.color:"#080e22"),borderRadius:7,padding:"9px 8px",cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
-                    <div style={{fontFamily:"'Orbitron',monospace",fontSize:9.5,color:isSel?m.color:"#1e3a60",fontWeight:700,marginBottom:2}}>{m.name}</div>
-                    <div style={{fontSize:8,color:m.color,fontWeight:700}}>{m.costPer}/analisis</div>
-                    <div style={{fontSize:7.5,color:"#1a3060",marginTop:2}}>{m.desc}</div>
+                    style={{background:isSel?m.color+"18":"#020508",border:"1px solid "+(isSel?m.color:"#080e22"),borderRadius:7,padding:"9px 8px",cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
+                    <div style={{fontFamily:"'Orbitron',monospace",fontSize:9,color:isSel?m.color:"#1e3a60",fontWeight:700,marginBottom:2}}>{m.name} <span style={{fontSize:7,background:m.color+"22",padding:"1px 5px",borderRadius:3,color:m.color}}>{m.label}</span></div>
+                    <div style={{fontSize:8,color:isSel?m.color:"#1a3060",marginTop:2}}>{m.costPer}/analisis</div>
+                    <div style={{fontSize:7.5,color:"#1a3060",marginTop:1}}>{m.desc}</div>
                   </button>
                 );
               })}
             </div>
+            {/* Gemini key input if selected */}
+            {local.aiModel==="gemini_flash"&&(
+              <div style={{marginTop:10}}>
+                <div style={{fontSize:8,color:"#4285f4",marginBottom:4}}>Google AI Studio API Key</div>
+                <input value={local.geminiKey||""} onChange={function(e){upd("geminiKey",e.target.value);}}
+                  placeholder="AIza..."
+                  style={{width:"100%",background:"#020508",border:"1px solid #0a1428",borderRadius:6,padding:"7px 10px",color:"#cce0ff",fontSize:10,fontFamily:"'Share Tech Mono',monospace",outline:"none"}}/>
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer"
+                  style={{fontSize:8,color:"#4285f4",display:"block",marginTop:3}}>Dapatkan API Key gratis → aistudio.google.com</a>
+              </div>
+            )}
           </div>
 
           {/* Sliders */}
@@ -1370,6 +1381,14 @@ function SetupScreen(props) {
       mt5Server:    mode === "real" ? mt5Server.trim() : "",
       mt5Password:  mode === "real" ? mt5Pass.trim() : "",
       anthropicKey: anthropicKey.trim(),
+      groqKey:      (function(){
+        var inp = document.querySelector('[data-key="groqKey"]');
+        return inp ? inp.value.trim() : "";
+      })(),
+      geminiKey:    (function(){
+        var inp = document.querySelector('[data-key="geminiKey"]');
+        return inp ? inp.value.trim() : "";
+      })(),
       aiModel:      aiModel,
       exchange:     selEx,
       scope:        scope,
@@ -2377,7 +2396,8 @@ function Dashboard(props) {
       var decision=await getAIDecision(snapshot,portfolioRef.current,cfg,{
         provider: selProv,
         anthropicKey: config.anthropicKey || "",
-        groqKey: config.anthropicKey || "",
+        groqKey:      config.groqKey      || "",
+        geminiKey:    config.geminiKey    || "",
       });
       setAiDec(decision);setAiCycle(function(c){return c+1;});
       setErrCount(0);
@@ -3157,6 +3177,8 @@ function saveKeys(cfg) {
   try {
     var toSave = {
       anthropicKey: cfg.anthropicKey || "",
+      groqKey:      cfg.groqKey      || "",
+      geminiKey:    cfg.geminiKey    || "",
       aiModel:      cfg.aiModel      || "",
       exchange:     cfg.exchange ? cfg.exchange.name : "",
     };
