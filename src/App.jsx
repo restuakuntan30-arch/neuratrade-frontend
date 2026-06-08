@@ -19,13 +19,13 @@ var ADMIN_QRIS_URL  = "https://ibb.co.com/yFtwBRWp";
 var ADMIN_WA        = "6282250931638";
 var ADMIN_NAMA      = "NeuraTrade AI";
 var ADMIN_BANK      = [
-  { bank:"BCA",     no:"none", atas:ADMIN_NAMA },
-  { bank:"Mandiri", no:"none", atas:ADMIN_NAMA },
+  { bank:"BCA",     no:"1234567890", atas:ADMIN_NAMA },
+  { bank:"Mandiri", no:"9876543210", atas:ADMIN_NAMA },
 ];
 var ADMIN_EWALLET = [
-  { name:"GoPay", no:"none", color:"#00aad4" },
-  { name:"OVO",   no:"none", color:"#4c2a7e" },
-  { name:"Dana",  no:"none", color:"#118eed" },
+  { name:"GoPay", no:"0812-3456-7890", color:"#00aad4" },
+  { name:"OVO",   no:"0812-3456-7890", color:"#4c2a7e" },
+  { name:"Dana",  no:"0812-3456-7890", color:"#118eed" },
 ];
 // Fix #20 — email demo tidak hardcode di konstanta publik
 var _D = ["demo@neuratrade.ai","test@gmail.com"];
@@ -824,71 +824,107 @@ function SettingsModal(props) {
     {key:"takeProfitPct",label:"Take-Profit per Trade (%)",min:1,max:20,  step:.5,  unit:"%"},
   ];
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(1,2,10,.96)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{width:"100%",maxWidth:380,background:"#030610",border:"1px solid #0a1828",borderRadius:16,padding:24}}>
-
-        {/* Model info */}
-        <div style={{background:"rgba(60,20,80,.15)",border:"1px solid #3a1a5a",borderRadius:8,padding:"10px 12px",marginBottom:14}}>
-          <div style={{fontSize:9,color:"#b06aff",letterSpacing:1.5,marginBottom:8}}>AI MODEL AKTIF</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-            {AI_MODELS.map(function(m){
-              var isSel = local.aiModel ? local.aiModel === m.id : m.id.includes("haiku");
-              return (
-                <button key={m.id} onClick={function(){setLocal(function(p){var s=Object.assign({},p);s.aiModel=m.id;return s;});}}
-                  style={{background:isSel?m.color+"15":"#020508",border:"1px solid "+(isSel?m.color+"50":"#0a1428"),borderRadius:7,padding:"8px",cursor:"pointer",textAlign:"left"}}>
-                  <div style={{fontFamily:"'Orbitron',monospace",fontSize:9.5,color:isSel?m.color:"#3a5a80",fontWeight:700,marginBottom:2}}>{m.name}</div>
-                  <div style={{fontSize:8,color:m.color,fontWeight:700}}>{m.costPer}/analisis</div>
-                  <div style={{fontSize:7.5,color:"#1a3060",marginTop:2}}>{m.desc}</div>
-                </button>
-              );
-            })}
-          </div>
+    <div className="nt-settings-modal">
+      {/* Header sticky */}
+      <div className="nt-settings-head">
+        <div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:"#5a9fff",fontWeight:700}}>
+          Pengaturan AI
         </div>
-        {[
-          { key:"riskPct",    label:"Risk per Trade (%)",          min:0.5, max:5,   step:0.5, unit:"%" },
-          { key:"confThresh", label:"Min Confidence AI (%)",       min:50,  max:90,  step:5,   unit:"%" },
-          { key:"aiInterval", label:"Interval Analisis (detik)",   min:10,  max:120, step:5,   unit:"s" },
-          { key:"maxPos",     label:"Max Posisi Terbuka",          min:1,   max:5,   step:1,   unit:"" },
-          { key:"tradeFee",   label:"Fee Trading (%)",             min:0,   max:0.5, step:0.05,unit:"%" },
-          { key:"slippage",   label:"Estimasi Slippage (%)",       min:0,   max:0.3, step:0.05,unit:"%" },
-          { key:"maxDrawdown",label:"Max Drawdown Global (%)",     min:2,   max:30,  step:1,   unit:"%" },
-          { key:"dailyLoss",  label:"Max Kerugian Harian (%)",     min:1,   max:20,  step:1,   unit:"%" },
-        ].map(function(cfg){
-          return (
-            <div key={cfg.key} style={{marginBottom:16}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                <span style={{fontSize:10,color:"#3a5a80"}}>{cfg.label}</span>
-                <span style={{fontSize:11,color:"#00e5a0",fontFamily:"'Orbitron',monospace",fontWeight:700}}>{local[cfg.key]}{cfg.unit}</span>
-              </div>
-              <input type="range" min={cfg.min} max={cfg.max} step={cfg.step} value={local[cfg.key]} onChange={function(e){upd(cfg.key,parseFloat(e.target.value));}}
-                style={{width:"100%",accentColor:"#0060e0"}}/>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"#1a3060",marginTop:2}}>
-                <span>{cfg.min}{cfg.unit}</span><span>{cfg.max}{cfg.unit}</span>
-              </div>
+        <button onClick={onClose} style={{background:"rgba(255,60,60,.12)",border:"1px solid #3a0a0a",borderRadius:7,padding:"6px 14px",color:"#ff7777",cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",fontSize:11}}>
+          X Tutup
+        </button>
+      </div>
+
+      {/* Scrollable body */}
+      <div className="nt-settings-body">
+        <div style={{maxWidth:480,margin:"0 auto"}}>
+
+          {/* AI Model selector */}
+          <div style={{background:"rgba(60,20,80,.15)",border:"1px solid #3a1a5a",borderRadius:8,padding:12,marginBottom:16}}>
+            <div style={{fontSize:9,color:"#b06aff",letterSpacing:1.5,marginBottom:8}}>AI MODEL AKTIF</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              {AI_MODELS.map(function(m){
+                var isSel = local.aiModel ? local.aiModel===m.id : m.id.includes("haiku");
+                return(
+                  <button key={m.id} onClick={function(){setLocal(function(p){var s=Object.assign({},p);s.aiModel=m.id;return s;});}}
+                    style={{background:isSel?m.color+"15":"#020508",border:"1px solid "+(isSel?m.color:"#080e22"),borderRadius:7,padding:"9px 8px",cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
+                    <div style={{fontFamily:"'Orbitron',monospace",fontSize:9.5,color:isSel?m.color:"#1e3a60",fontWeight:700,marginBottom:2}}>{m.name}</div>
+                    <div style={{fontSize:8,color:m.color,fontWeight:700}}>{m.costPer}/analisis</div>
+                    <div style={{fontSize:7.5,color:"#1a3060",marginTop:2}}>{m.desc}</div>
+                  </button>
+                );
+              })}
             </div>
-          );
-        })}
-        {/* Estimated daily cost */}
-        {(function(){
-          var model = local.aiModel || AI_MODELS[0].id;
-          var costPer = model.includes("haiku") ? 0.0001 : 0.003;
-          var interval = local.aiInterval || 30;
-          var callsPerDay = Math.floor(86400 / interval);
-          var totalUSD = (callsPerDay * costPer).toFixed(2);
-          var totalIDR = Math.round(callsPerDay * costPer * 15800).toLocaleString("id-ID");
-          return (
-            <div style={{background:"rgba(0,10,5,.5)",border:"1px solid #003a18",borderRadius:7,padding:"8px 12px",marginBottom:12}}>
-              <div style={{fontSize:8.5,color:"#2a7a50",marginBottom:4}}>Estimasi biaya per hari:</div>
-              <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,color:"#00e5a0",fontWeight:700}}>
-                ~${totalUSD} = Rp {totalIDR}
+          </div>
+
+          {/* Sliders */}
+          {[
+            {key:"riskPct",     label:"Risk per Trade (%)",          min:0.5, max:5,   step:0.5,  unit:"%"},
+            {key:"confThresh",  label:"Min Confidence AI (%)",       min:50,  max:90,  step:5,    unit:"%"},
+            {key:"aiInterval",  label:"Interval Analisis (detik)",   min:10,  max:120, step:5,    unit:"s"},
+            {key:"maxPos",      label:"Max Posisi Terbuka",          min:1,   max:5,   step:1,    unit:""},
+            {key:"tradeFee",    label:"Fee Trading (%)",             min:0,   max:0.5, step:0.05, unit:"%"},
+            {key:"slippage",    label:"Estimasi Slippage (%)",       min:0,   max:0.3, step:0.05, unit:"%"},
+            {key:"maxDrawdown", label:"Max Drawdown Global (%)",     min:2,   max:30,  step:1,    unit:"%"},
+            {key:"dailyLoss",   label:"Max Kerugian Harian (%)",     min:1,   max:20,  step:1,    unit:"%"},
+            {key:"stopLossPct", label:"Stop-Loss per Trade (%)",     min:0.5, max:10,  step:0.5,  unit:"%", highlight:true},
+            {key:"takeProfitPct",label:"Take-Profit per Trade (%)",  min:1,   max:20,  step:0.5,  unit:"%", highlight:true},
+          ].map(function(s){
+            return(
+              <div key={s.key} style={{marginBottom:14,background:s.highlight?"rgba(0,30,15,.2)":"transparent",borderRadius:s.highlight?7:0,padding:s.highlight?"8px 10px":0,border:s.highlight?"1px solid #003a18":"none"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                  <span style={{fontSize:10,color:s.highlight?"#3a7a50":"#3a5a80"}}>{s.label}</span>
+                  <span style={{fontSize:12,color:s.highlight?"#00e5a0":"#7ab0ff",fontFamily:"'Orbitron',monospace",fontWeight:700}}>{local[s.key]||0}{s.unit}</span>
+                </div>
+                <input type="range" min={s.min} max={s.max} step={s.step} value={local[s.key]||0}
+                  onChange={function(e){upd(s.key,parseFloat(e.target.value));}}
+                  style={{width:"100%",accentColor:s.highlight?"#00e5a0":"#0060e0"}}/>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"#0a1428",marginTop:2}}>
+                  <span>{s.min}{s.unit}</span><span>{s.max}{s.unit}</span>
+                </div>
               </div>
-              <div style={{fontSize:8,color:"#1a4a30",marginTop:3}}>
-                {callsPerDay} analisis × {model.includes("haiku")?"Haiku (~Rp 1)":"Sonnet (~Rp 45)"}/analisis
+            );
+          })}
+
+          {/* Estimasi biaya */}
+          {(function(){
+            var model      = local.aiModel || AI_MODELS[0].id;
+            var costPer    = model.includes("haiku")?0.0001:model.includes("groq")?0:0.003;
+            var interval   = local.aiInterval || 30;
+            var callsPerDay= Math.floor(86400/interval);
+            var totalUSD   = (callsPerDay*costPer).toFixed(2);
+            var totalIDR   = Math.round(callsPerDay*costPer*15800).toLocaleString("id-ID");
+            return(
+              <div style={{background:"rgba(0,10,5,.5)",border:"1px solid #003a18",borderRadius:7,padding:"10px 12px",marginBottom:14}}>
+                <div style={{fontSize:8.5,color:"#2a7a50",marginBottom:4}}>Estimasi biaya per hari:</div>
+                <div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:"#00e5a0",fontWeight:700}}>
+                  ~${totalUSD} = Rp {totalIDR}
+                </div>
+                <div style={{fontSize:8,color:"#1a4a30",marginTop:3}}>
+                  {callsPerDay} analisis/hari
+                </div>
               </div>
+            );
+          })()}
+
+          {/* WhatsApp / Telegram notif */}
+          <div style={{background:"rgba(0,30,10,.2)",border:"1px solid #003a18",borderRadius:8,padding:12,marginBottom:8}}>
+            <div style={{fontSize:8.5,color:"#2a7a50",letterSpacing:1.5,marginBottom:8}}>NOTIFIKASI TELEGRAM</div>
+            <input value={local.waNumber||""} onChange={function(e){upd("waNumber",e.target.value);}}
+              placeholder="Username Telegram kamu (contoh: Restu_hidayat30)"
+              style={{width:"100%",background:"#020508",border:"1px solid #0a1428",borderRadius:6,padding:"8px 10px",color:"#cce0ff",fontSize:10,fontFamily:"'Share Tech Mono',monospace",outline:"none",marginBottom:4}}/>
+            <div style={{fontSize:8,color:"#1e3a60",lineHeight:1.7}}>
+              Notif signal masuk otomatis ke Telegram via @CallMeBot_txtbot
             </div>
-          );
-        })()}
-        <button onClick={function(){onChange(local);onClose();}} style={{width:"100%",background:"linear-gradient(135deg,#003ab0,#006eff)",border:"none",borderRadius:9,padding:12,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1}}>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Footer sticky */}
+      <div className="nt-settings-foot">
+        <button onClick={function(){onChange(local);onClose();}}
+          style={{width:"100%",background:"linear-gradient(135deg,#003ab0,#006eff)",border:"none",borderRadius:10,padding:14,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1}}>
           Simpan Pengaturan
         </button>
       </div>
@@ -2564,10 +2600,10 @@ function Dashboard(props) {
   var aiCallsLeft=isPro?null:3-aiLimit.count;
 
   return(
-    <div style={{height:"100vh",display:"flex",flexDirection:"column",background:"#020810",overflow:"hidden"}} className="nt-dashboard-wrap">
+    <div className="nt-dash">
 
       {/* Top bar */}
-      <div style={{borderBottom:"1px solid #080f22",padding:"7px 12px",background:"rgba(1,3,12,.98)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+      <div className="nt-topbar">
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <div style={{fontFamily:"'Orbitron',monospace",fontWeight:900,fontSize:14,letterSpacing:2}}>
             <span style={{background:"linear-gradient(135deg,#0080ff,#00e5a0)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>N</span>
@@ -2600,27 +2636,25 @@ function Dashboard(props) {
         </div>
       </div>
 
-      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"row"}}>
+      <div className="nt-body">
 
         {/* Desktop sidebar - in flow */}
-        <div className="nt-desktop-nav">
-          <div style={{fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:900,letterSpacing:2,padding:"14px 14px 12px",borderBottom:"1px solid #080f22",marginBottom:8}}>
+        <div className="nt-sidebar">
+          <div className="nt-sidebar-logo">
             <span style={{background:"linear-gradient(135deg,#0080ff,#00e5a0)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>NEURA</span>
             <span style={{background:"linear-gradient(135deg,#ff4d6d,#ff8f6b)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TRADE</span>
           </div>
-          <div style={{padding:"0 8px"}}>
+          <div className="nt-sidebar-nav">
           {[{id:"trade",icon:"📊",label:"Trading"},{id:"history",icon:"📋",label:"History"},{id:"pro",icon:"⭐",label:isPro?"PRO":"Upgrade"}].map(function(tab){
             var isAct=navTab===tab.id;
-            return <button key={tab.id} onClick={function(){setNavTab(tab.id);}} className={isAct?"active":""}>
-              <span style={{fontSize:16}}>{tab.icon}</span>{tab.label}
-            </button>;
+            return <button key={tab.id} onClick={function(){setNavTab(tab.id);}} className={isAct?"active":""}><span style={{fontSize:16}}>{tab.icon}</span> {tab.label}</button>;
           })}
           </div>
         </div>
-        <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"0"}}>
+        <div className="nt-main">
         {/* TRADE TAB */}
         {navTab==="trade"&&(
-          <div style={{height:"100%",overflowY:"auto",overflowX:"hidden",padding:"10px 12px"}}>
+          <div className="nt-content">
             <div style={{marginBottom:10}}>
               {/* Real balance banner for real mode */}
               {config && config.mode === "real" && (
@@ -2954,7 +2988,7 @@ function Dashboard(props) {
 
         {/* HISTORY TAB — Fix #7 #10 */}
         {navTab==="history"&&(
-          <div style={{height:"100%",overflowY:"auto",overflowX:"hidden",padding:"10px 12px"}}>
+          <div className="nt-content">
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
               <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,color:"#5a9fff",fontWeight:700}}>History & Backtest</div>
               {trades.length>0&&<button onClick={exportCSV} style={{background:"rgba(0,80,200,.15)",border:"1px solid #1a4080",borderRadius:6,padding:"5px 12px",color:"#5a90df",cursor:"pointer",fontSize:9,fontFamily:"'Share Tech Mono',monospace"}}>Export CSV</button>}
@@ -3033,7 +3067,7 @@ function Dashboard(props) {
 
         {/* PRO TAB */}
         {navTab==="pro"&&(
-          <div style={{height:"100%",overflowY:"auto",overflowX:"hidden",padding:"10px 12px"}}>
+          <div className="nt-content">
             <UpgradeScreen user={user} onClose={function(){setNavTab("trade");}} onUpgrade={function(plan){
               if(plan.id==="trial"){props.onUpgrade(plan.id);setNavTab("trade");return;}
               setPayPlan(plan);setShowPay(true);
@@ -3242,6 +3276,7 @@ export default function App() {
               // Simpan sesi ke localStorage
               localStorage.setItem("nt_email", email);
               localStorage.setItem("nt_token", accessToken);
+              // Sesi sementara (config akan disave saat setup selesai)
               window.history.replaceState({}, document.title, window.location.pathname);
               setUser({ email:email, tier:"free", trialExpiry:null });
               setAppReady(true);
@@ -3271,53 +3306,74 @@ export default function App() {
         }
       }
 
-      // 2. Restore sesi dari localStorage (F5 / buka ulang browser)
-      var savedEmail = localStorage.getItem("nt_email");
-      var savedCfg   = loadKeys();
+      // 2. Restore sesi dari localStorage — TIDAK logout saat close browser
+      // Coba format baru dulu
+      var session = loadSession();
 
-      if (savedEmail) {
-        // Ada email tersimpan → restore user
-        var savedTier   = localStorage.getItem("nt_tier")   || "free";
-        var savedExpiry = localStorage.getItem("nt_expiry");
-        var exp2 = savedExpiry ? parseInt(savedExpiry) : null;
-
-        setUser({ email:savedEmail, tier:savedTier, trialExpiry:exp2 });
-
-        if (savedCfg && savedCfg.mode) {
-          // Ada config → langsung ke dashboard TANPA loading
-          // Fix exchange & scope object reference
-          if (savedCfg.exchange && savedCfg.exchange.name) {
-            var matchEx = EXCHANGES_LIST.find(function(e){ return e.name === savedCfg.exchange.name; });
-            if (matchEx) savedCfg.exchange = matchEx;
-          }
-          if (savedCfg.scope && savedCfg.scope.id) {
-            var matchSc = MARKET_SCOPES.find(function(s){ return s.id === savedCfg.scope.id; });
-            if (matchSc) savedCfg.scope = matchSc;
-          }
-          setConfig(savedCfg);
-          setAppReady(true);
-          setScreen("dashboard");
-        } else {
-          // Punya email tapi belum setup → ke setup screen
-          setAppReady(true);
-          setScreen("setup");
-        }
-
-        // Background: sync tier terbaru dari backend
-        fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(savedEmail))
+      if (session && session.email && session.cfg) {
+        var cfg = Object.assign({}, session.cfg);
+        try {
+          if (cfg.exchange && cfg.exchange.name) {
+            var matchEx = EXCHANGES_LIST.find(function(e){ return e.name === cfg.exchange.name; });
+            cfg.exchange = matchEx || EXCHANGES_LIST[0];
+          } else { cfg.exchange = EXCHANGES_LIST[0]; }
+          if (cfg.scope && cfg.scope.id) {
+            var matchSc = MARKET_SCOPES.find(function(s){ return s.id === cfg.scope.id; });
+            cfg.scope = matchSc || MARKET_SCOPES[0];
+          } else { cfg.scope = MARKET_SCOPES[0]; }
+          cfg.balance = parseFloat(cfg.balance) || 5000;
+        } catch(e) {}
+        setUser({ email:session.email, tier:session.tier||"free", trialExpiry:null });
+        setConfig(cfg);
+        setAppReady(true);
+        setScreen("dashboard");
+        // Sync tier di background
+        fetch("https://neuratrade-backend.onrender.com/api/user/" + encodeURIComponent(session.email))
           .then(function(r){ return r.json(); })
           .then(function(data){
             if (data && data.tier) {
-              var exp3 = data.pro_expiry   ? new Date(data.pro_expiry).getTime()
-                       : data.trial_expiry ? new Date(data.trial_expiry).getTime() : null;
-              setUser({ email:savedEmail, tier:data.tier, trialExpiry:exp3 });
-              localStorage.setItem("nt_tier",  data.tier);
-              localStorage.setItem("nt_expiry", exp3 || "");
+              setUser({ email:session.email, tier:data.tier, trialExpiry:null });
+              saveSession(session.email, data.tier, cfg);
             }
           }).catch(function(){});
         return;
       }
 
+      // Coba legacy format (nt_email + nt_cfg terpisah)
+      var legacyEmail = localStorage.getItem("nt_email");
+      var legacyCfg   = (function(){
+        try {
+          var r = localStorage.getItem("nt_cfg");
+          if (!r) return null;
+          // Try plain JSON first
+          try { var d = JSON.parse(r); if (d && d.mode) return d; } catch(e) {}
+          // Try btoa
+          try { var d2 = JSON.parse(atob(r)); if (d2 && d2.mode) return d2; } catch(e) {}
+          return null;
+        } catch(e) { return null; }
+      })();
+
+      if (legacyEmail && legacyCfg) {
+        // Migrate ke format baru
+        saveSession(legacyEmail, localStorage.getItem("nt_tier")||"free", legacyCfg);
+        var cfg2 = Object.assign({}, legacyCfg);
+        try {
+          if (cfg2.exchange && cfg2.exchange.name) {
+            var mx = EXCHANGES_LIST.find(function(e){ return e.name === cfg2.exchange.name; });
+            cfg2.exchange = mx || EXCHANGES_LIST[0];
+          } else { cfg2.exchange = EXCHANGES_LIST[0]; }
+        } catch(e) {}
+        setUser({ email:legacyEmail, tier:localStorage.getItem("nt_tier")||"free", trialExpiry:null });
+        setConfig(cfg2);
+        setAppReady(true);
+        setScreen("dashboard");
+        return;
+      } else if (legacyEmail) {
+        setUser({ email:legacyEmail, tier:"free", trialExpiry:null });
+        setAppReady(true);
+        setScreen("setup");
+        return;
+      }
       // 3. Tidak ada sesi → splash screen → login
       var t = setTimeout(function(){
         setAppReady(true);
@@ -3375,7 +3431,6 @@ export default function App() {
     }
   }
   function handleVerified(){
-    // Simpan email ke localStorage agar sesi persist
     localStorage.setItem("nt_email", pending);
     localStorage.setItem("nt_tier", "free");
     setUser({email:pending, tier:"free", trialExpiry:null});
@@ -3407,8 +3462,11 @@ export default function App() {
   function addMagicLog(msg){ console.log("[Auth]", msg); }
   function handleSetupDone(cfg){
     setConfig(cfg);
-    saveKeys(cfg);
-    setShowDisclaimer(true); // Fix 12 — show risk warning before dashboard
+    // Simpan sesi - user tidak perlu login ulang setelah close browser
+    if (user && user.email) {
+      saveSession(user.email, user.tier || "free", cfg);
+    }
+    setShowDisclaimer(true);
   }
   // Fix #15 — proper yearly/monthly distinction
   function handleUpgrade(planId){
@@ -3422,14 +3480,8 @@ export default function App() {
     setUser(function(prev){return Object.assign({},prev,{tier:"free",trialExpiry:null});});
   }
   function handleLogout(){
-    // Hapus SEMUA data sesi - hanya terjadi saat user klik Logout
-    try {
-      localStorage.removeItem("nt_cfg");
-      localStorage.removeItem("nt_email");
-      localStorage.removeItem("nt_token");
-      localStorage.removeItem("nt_tier");
-      localStorage.removeItem("nt_expiry");
-    } catch(e) {}
+    // Logout HANYA saat user klik tombol ini
+    clearSession();
     setUser(null);
     setConfig(null);
     setAppReady(true);
@@ -3462,6 +3514,7 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
+        html,body,#root{height:100%;background:#020810}
         ::-webkit-scrollbar{width:4px;height:4px}
         ::-webkit-scrollbar-track{background:#010408}
         ::-webkit-scrollbar-thumb{background:#0c1830;border-radius:2px}
@@ -3469,79 +3522,38 @@ export default function App() {
         @keyframes spin{to{transform:rotate(360deg)}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
         input:focus{outline:none;border-color:#0050d0!important}
-        input[type=range]{accent-color:#0060e0}
+        input[type=range]{accent-color:#0060e0;height:4px}
         button:active{transform:scale(.97)}
-        html{height:100%}body{height:100%;margin:0}
         *{-webkit-tap-highlight-color:transparent}
-        canvas{touch-action:none}
-        
-        /* ── RESPONSIVE DESKTOP ── */
-        @media (min-width: 768px) {
-          .nt-dashboard { display: flex; flex-direction: row; height: 100vh; }
-          .nt-sidebar { width: 280px; border-right: 1px solid #080f22; overflow-y: auto; }
-          .nt-main { flex: 1; overflow-y: auto; }
-          .nt-topbar { padding: 10px 24px !important; }
-          .nt-grid-2 { grid-template-columns: 1fr 1fr !important; }
-          .nt-grid-3 { grid-template-columns: 1fr 1fr 1fr !important; }
-          .nt-chart { height: 200px !important; }
-          .nt-card { padding: 18px 20px !important; }
-          .nt-font-lg { font-size: 16px !important; }
-          .nt-bottom-nav { display: none !important; }
-          .nt-desktop-nav { display: flex !important; }
+
+        /* ── DASHBOARD LAYOUT ─────────────────── */
+        .nt-dash{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#020810}
+        .nt-topbar{display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:rgba(1,3,12,.98);border-bottom:1px solid #080f22;flex-shrink:0;min-height:42px}
+        .nt-body{display:flex;flex:1;overflow:hidden}
+        .nt-sidebar{display:none;flex-direction:column;width:190px;min-width:190px;flex-shrink:0;background:rgba(1,3,12,.99);border-right:1px solid #0a1428;overflow-y:auto}
+        .nt-sidebar-logo{padding:14px 14px 10px;border-bottom:1px solid #080f22;margin-bottom:6px}
+        .nt-sidebar-nav{padding:0 8px;flex:1}
+        .nt-sidebar-nav button{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border-radius:8px;background:transparent;border:1px solid transparent;cursor:pointer;color:#2a4a70;font-family:'Share Tech Mono',monospace;font-size:11px;transition:all .15s;margin-bottom:2px;text-align:left}
+        .nt-sidebar-nav button.active{background:rgba(0,80,200,.18);border-color:#1a4080;color:#7ab0ff}
+        .nt-sidebar-nav button:hover:not(.active){background:rgba(255,255,255,.04);color:#4a6a90}
+        .nt-main{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+        .nt-content{padding:10px 12px;min-height:100%;padding-bottom:70px}
+        .nt-bottom-nav{display:flex;border-top:1px solid #080f22;background:rgba(1,3,12,.98);flex-shrink:0}
+        .nt-bottom-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px;background:transparent;border:none;cursor:pointer;color:#2a4a70;font-family:'Share Tech Mono',monospace;font-size:9px;gap:3px;transition:all .15s}
+        .nt-bottom-nav button.active{color:#5a90df;background:rgba(0,80,200,.08)}
+
+        @media(min-width:768px){
+          .nt-sidebar{display:flex!important}
+          .nt-bottom-nav{display:none!important}
+          .nt-topbar{padding:7px 16px}
+          .nt-content{padding:14px 18px;padding-bottom:20px}
         }
-        @media (max-width: 767px) {
-          .nt-desktop-nav { display: none !important; }
-          .nt-sidebar { display: none !important; }
-        }
-        
-        /* Desktop nav sidebar */
-        .nt-desktop-nav {
-          flex-direction: column;
-          gap: 4px;
-          padding: 0;
-          background: rgba(1,3,12,.99);
-          border-right: 1px solid #0a1428;
-          height: 100vh;
-          width: 180px;
-          display: none;
-          position: fixed;
-          left: 0; top: 0;
-          z-index: 50;
-          overflow-y: auto;
-        }
-        .nt-desktop-nav .nav-logo {
-          padding: 16px 14px 12px;
-          border-bottom: 1px solid #080f22;
-          margin-bottom: 8px;
-        }
-        .nt-desktop-nav .nav-section {
-          padding: 0 10px;
-          flex: 1;
-        }
-        .nt-desktop-nav button {
-          display: flex; align-items: center; gap: 10px;
-          padding: 9px 12px; border-radius: 8px;
-          background: transparent; border: 1px solid transparent; cursor: pointer;
-          text-align: left; color: #2a4a70;
-          font-family: 'Share Tech Mono', monospace; font-size: 11px;
-          transition: all .15s; width: 100%;
-          margin-bottom: 2px;
-        }
-        .nt-desktop-nav button.active {
-          background: rgba(0,80,200,.18);
-          border-color: #1a4080;
-          color: #7ab0ff;
-        }
-        .nt-desktop-nav button:hover:not(.active) {
-          background: rgba(255,255,255,.04);
-          color: #4a6a90;
-        }
-        @media (min-width: 768px) {
-          .nt-desktop-nav { display: flex !important; }
-          .nt-bottom-nav { display: none !important; }
-          .nt-main-content { margin-left: 180px !important; }
-          .nt-topbar { padding-left: 196px !important; }
-        }
+
+        /* ── SETTINGS MODAL ───────────────────── */
+        .nt-settings-modal{position:fixed;inset:0;z-index:500;background:rgba(1,2,10,.97);display:flex;flex-direction:column}
+        .nt-settings-head{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #0a1428;background:#030610}
+        .nt-settings-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px}
+        .nt-settings-foot{flex-shrink:0;padding:12px 16px;border-top:1px solid #0a1428;background:#030610}
       `}</style>
       {screen==="splash"&&<SplashScreen/>}
       {screen==="login"&&<LoginScreen onLogin={handleLogin}/>}
