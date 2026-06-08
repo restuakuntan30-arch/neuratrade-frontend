@@ -826,10 +826,7 @@ function SettingsModal(props) {
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(1,2,10,.96)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div style={{width:"100%",maxWidth:380,background:"#030610",border:"1px solid #0a1828",borderRadius:16,padding:24}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:"#5a9fff",fontWeight:700}}>⚙ Pengaturan</div>
-          <button onClick={onClose} style={{background:"transparent",border:"1px solid #0a1428",borderRadius:6,padding:"4px 10px",color:"#2a4a70",cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",fontSize:10}}>✕ Tutup</button>
-        </div>
+
         {/* Model info */}
         <div style={{background:"rgba(60,20,80,.15)",border:"1px solid #3a1a5a",borderRadius:8,padding:"10px 12px",marginBottom:14}}>
           <div style={{fontSize:9,color:"#b06aff",letterSpacing:1.5,marginBottom:8}}>AI MODEL AKTIF</div>
@@ -1974,11 +1971,30 @@ function Dashboard(props) {
   function fetchRealBalance() {
     var cfg = configRef.current;
     if (!cfg || cfg.mode !== "real") return;
-    if (!cfg.apiKey || !cfg.secretKey) return;
+
+    // Cek tipe exchange - MT5 tidak support API key balance
+    var exName = (cfg.exchange && cfg.exchange.name ? cfg.exchange.name : "binance").toLowerCase();
+    var isMt5  = cfg.exchange && cfg.exchange.cred === "mt5";
+
+    if (isMt5) {
+      // MT5 exchange (Exness, IC Markets, dll) tidak support REST balance API
+      setBalError("Exchange " + (cfg.exchange ? cfg.exchange.name : "MT5") + " menggunakan MT5 — saldo tidak bisa diambil otomatis.
+Gunakan Binance/ByBit untuk saldo real-time.");
+      return;
+    }
+
+    if (!cfg.apiKey || !cfg.secretKey) {
+      setBalError("Masukkan API Key & Secret Key di Setup untuk melihat saldo real dari exchange.");
+      return;
+    }
+
     setBalLoading(true);
     setBalError("");
     var BACKEND = "https://neuratrade-backend.onrender.com";
-    var exName  = (cfg.exchange && cfg.exchange.name ? cfg.exchange.name : "binance").toLowerCase();
+
+    // Wake up backend first (Render free tier sleeps)
+    fetch(BACKEND + "/health").catch(function(){});
+
     fetch(BACKEND + "/api/balance", {
       method: "POST",
       headers: {
@@ -1988,24 +2004,32 @@ function Dashboard(props) {
         "x-exchange":   exName,
       },
       body: JSON.stringify({}),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined,
     })
-    .then(function(res){ return res.json(); })
-    .then(function(data){
-      setBalLoading(false);
-      if (data.error) {
-        setBalError(data.error);
-      } else {
-        setRealBalance(data);
-        var realUsd = data.totalUsdt || 0;
-        setPortfolio(function(prev){
-          return Object.assign({}, prev, { bal: realUsd });
-        });
-      }
-    })
-    .catch(function(e){
-      setBalLoading(false);
-      setBalError("Gagal: " + e.message);
-    });
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        setBalLoading(false);
+        if (data.error) {
+          setBalError(data.error);
+        } else {
+          setRealBalance(data);
+          var realUsd = data.totalUsdt || 0;
+          setPortfolio(function(prev) {
+            return Object.assign({}, prev, {
+              bal:     realUsd > 0 ? realUsd : prev.bal,
+              initBal: prev.initBal === (cfg.balance || 5000) && realUsd > 0 ? realUsd : prev.initBal,
+            });
+          });
+        }
+      })
+      .catch(function(e) {
+        setBalLoading(false);
+        if (e.name === "AbortError" || e.name === "TimeoutError") {
+          setBalError("Backend sedang bangun (Render sleep). Coba lagi dalam 30 detik.");
+        } else {
+          setBalError("Gagal koneksi backend: " + e.message);
+        }
+      });
   }
 
   // Auto-fetch balance setiap 30 detik — empty deps, no infinite loop
@@ -2598,24 +2622,31 @@ function Dashboard(props) {
                     {balLoading ? (
                       <div style={{fontSize:11,color:"#3a5a80"}}>Mengambil saldo...</div>
                     ) : balError ? (
-                      <div style={{fontSize:9.5,color:"#ff4d6d",lineHeight:1.6}}>{balError}</div>
+                      <div style={{fontSize:9.5,color: balError.includes("MT5") ? "#ffa000" : "#ff4d6d",lineHeight:1.7,whiteSpace:"pre-line"}}>{balError}</div>
                     ) : realBalance ? (
                       <div>
                         <div style={{fontFamily:"'Orbitron',monospace",fontSize:20,color:"#00e5a0",fontWeight:900}}>
                           ${realBalance.totalUsdt.toLocaleString(undefined,{maximumFractionDigits:2,minimumFractionDigits:2})}
                         </div>
-                        <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap"}}>
-                          {(realBalance.balances||[]).slice(0,5).map(function(b){
-                            return b.free > 0 && (
-                              <span key={b.asset} style={{fontSize:8,color:"#2a5a40",background:"rgba(0,60,30,.2)",border:"1px solid #003a18",borderRadius:4,padding:"1px 7px"}}>
-                                {b.asset}: {b.free < 1 ? b.free.toFixed(6) : b.free.toLocaleString(undefined,{maximumFractionDigits:2})}
+                        <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
+                          {(realBalance.breakdown||realBalance.balances||[]).slice(0,6).map(function(b){
+                            var isLd = b.asset==="LDUSDT";
+                            return (
+                              <span key={b.asset} style={{fontSize:8,color:isLd?"#ffa000":"#2a5a40",background:isLd?"rgba(60,40,0,.3)":"rgba(0,60,30,.2)",border:"1px solid "+(isLd?"#5a3a00":"#003a18"),borderRadius:4,padding:"2px 7px"}}>
+                                {b.asset}: {b.usdValue ? "$"+b.usdValue.toFixed(2) : (b.free||b.total||0).toFixed(4)}
+                                {isLd&&" 🔒"}
                               </span>
                             );
                           })}
                         </div>
+                        {realBalance.note&&(
+                          <div style={{fontSize:8,color:"#ffa000",marginTop:4}}>ℹ️ {realBalance.note}</div>
+                        )}
                       </div>
                     ) : (
-                      <div style={{fontSize:10,color:"#1e3a60"}}>Belum terhubung</div>
+                      <div style={{fontSize:9.5,color:"#1e3a60",lineHeight:1.7}}>
+                        Belum terhubung — klik 🔄 untuk coba ambil saldo
+                      </div>
                     )}
                   </div>
                   <button onClick={fetchRealBalance} disabled={balLoading}
