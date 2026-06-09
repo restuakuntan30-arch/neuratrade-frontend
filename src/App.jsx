@@ -3464,43 +3464,6 @@ function saveKeys(cfg) {
     localStorage.setItem("nt_cfg", encoded);
   } catch(e) {}
 }
-// ── ENCRYPTION (AES-GCM via Web Crypto) ───────────────────────
-var NT_ENC_KEY = null;
-
-async function getEncKey() {
-  if (NT_ENC_KEY) return NT_ENC_KEY;
-  // Derive key from device fingerprint
-  var fp = (navigator.userAgent + screen.width + screen.height + navigator.language).slice(0,32);
-  var raw = new TextEncoder().encode(fp.padEnd(32,"x").slice(0,32));
-  NT_ENC_KEY = await crypto.subtle.importKey("raw", raw, {name:"AES-GCM"}, false, ["encrypt","decrypt"]);
-  return NT_ENC_KEY;
-}
-
-async function encryptData(obj) {
-  try {
-    var key  = await getEncKey();
-    var iv   = crypto.getRandomValues(new Uint8Array(12));
-    var data = new TextEncoder().encode(JSON.stringify(obj));
-    var enc  = await crypto.subtle.encrypt({name:"AES-GCM",iv}, key, data);
-    var buf  = new Uint8Array(iv.length + enc.byteLength);
-    buf.set(iv, 0); buf.set(new Uint8Array(enc), iv.length);
-    return btoa(String.fromCharCode.apply(null, buf));
-  } catch(e) { return btoa(JSON.stringify(obj)); } // fallback
-}
-
-async function decryptData(str) {
-  try {
-    var key = await getEncKey();
-    var buf = Uint8Array.from(atob(str), function(c){return c.charCodeAt(0);});
-    var iv  = buf.slice(0,12);
-    var enc = buf.slice(12);
-    var dec = await crypto.subtle.decrypt({name:"AES-GCM",iv}, key, enc);
-    return JSON.parse(new TextDecoder().decode(dec));
-  } catch(e) {
-    try { return JSON.parse(atob(str)); } catch(e2) { return null; }
-  }
-}
-
 // ── SESSION STORAGE v3 (plain JSON, reliable) ─────────────────
 var NT_SESSION_KEY = "nt_v3_session";
 
@@ -3910,11 +3873,6 @@ export default function App() {
   var isPro = user && user.tier !== "free";
 
   // ── Prevent black screen on refresh ──────────────────────────
-  // Show PIN lock if session exists and PIN is set
-  if (appReady && !pinPassed && localStorage.getItem("nt_pin_hash")) {
-    return <PinLockScreen onPass={function(){ setPinPassed(true); }}/>;
-  }
-
   if (!appReady) {
     return (
       <div style={{minHeight:"100vh",background:"#020810",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
@@ -3980,6 +3938,10 @@ export default function App() {
         .nt-settings-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px}
         .nt-settings-foot{flex-shrink:0;padding:12px 16px;border-top:1px solid #0a1428;background:#030610}
       `}</style>
+      {/* PIN Lock overlay - shown if PIN is set and not yet passed */}
+      {appReady&&!pinPassed&&(function(){ try { return !!localStorage.getItem("nt_pin_hash"); } catch(e){return false;} })()&&(
+        <PinLockScreen onPass={function(){ setPinPassed(true); }}/>
+      )}
       {screen==="splash"&&<SplashScreen/>}
       {screen==="login"&&<LoginScreen onLogin={handleLogin}/>}
       {screen==="verify"&&<VerifyScreen email={pending} isDemo={false} onVerified={handleVerified}/>}
