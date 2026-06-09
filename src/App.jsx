@@ -463,7 +463,10 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
 
   // ── Try Google Gemini ──────────────────────────────────────────────
   var isGemini = provider && provider.id === "gemini_flash";
-  if (isGemini && extras && extras.geminiKey) {
+  if (isGemini) {
+    if (!extras || !extras.geminiKey) {
+      throw new Error("Gemini dipilih tapi API Key kosong. Isi key di Setup atau Settings.");
+    }
     try {
       var gemUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + extras.geminiKey;
       var gemRes = await fetch(gemUrl, {
@@ -474,14 +477,22 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
           generationConfig: { maxOutputTokens: 400, temperature: 0.1 },
         }),
       });
-      if (!gemRes.ok) throw new Error("HTTP " + gemRes.status);
+      if (gemRes.status === 400) { var e400 = await gemRes.json(); throw new Error("API Key salah: " + (e400.error && e400.error.message || "Bad Request")); }
+      if (gemRes.status === 403) throw new Error("API Key tidak valid atau tidak punya akses Gemini");
+      if (gemRes.status === 429) throw new Error("RATE_LIMIT");
+      if (!gemRes.ok) throw new Error("Gemini HTTP " + gemRes.status);
       var gemData = await gemRes.json();
       var gemText = gemData.candidates && gemData.candidates[0] &&
-        gemData.candidates[0].content && gemData.candidates[0].content.parts[0].text;
-      if (gemText) rawText = gemText;
+        gemData.candidates[0].content && gemData.candidates[0].content.parts &&
+        gemData.candidates[0].content.parts[0] && gemData.candidates[0].content.parts[0].text;
+      if (gemText) {
+        rawText = gemText;
+      } else {
+        throw new Error("Gemini tidak ada respons - cek API key");
+      }
     } catch(gemErr) {
-      console.warn("Gemini error:", gemErr.message);
-      rawText = null;
+      if (gemErr.message === "RATE_LIMIT") throw gemErr;
+      throw new Error("Gemini: " + gemErr.message);
     }
   }
 
@@ -1404,6 +1415,8 @@ function SetupScreen(props) {
   var [bal,        setBal]        = useState("5000");
   var [apiKey,     setApiKey]     = useState("");
   var [secret,     setSecret]     = useState("");
+  var [geminiKey,  setGeminiKey]  = useState("");
+  var [groqKeyVal, setGroqKeyVal] = useState("");
   var [mt5Login,   setMt5Login]   = useState("");
   var [mt5Server,  setMt5Server]  = useState("");
   var [mt5Pass,    setMt5Pass]    = useState("");
@@ -1442,14 +1455,8 @@ function SetupScreen(props) {
       mt5Server:    mode === "real" ? mt5Server.trim() : "",
       mt5Password:  mode === "real" ? mt5Pass.trim() : "",
       anthropicKey: anthropicKey.trim(),
-      groqKey:      (function(){
-        var inp = document.querySelector('[data-key="groqKey"]');
-        return inp ? inp.value.trim() : "";
-      })(),
-      geminiKey:    (function(){
-        var inp = document.querySelector('[data-key="geminiKey"]');
-        return inp ? inp.value.trim() : "";
-      })(),
+      groqKey:      groqKeyVal.trim(),
+      geminiKey:    geminiKey.trim(),
       aiModel:      aiModel,
       exchange:     selEx,
       scope:        scope,
@@ -1679,7 +1686,17 @@ function SetupScreen(props) {
               <div style={{ marginTop:8 }}>
                 <div style={{ fontSize:8.5,color:"#6a3a9a",marginBottom:5 }}>{selProv.keyLabel}</div>
                 <div style={{ display:"flex",gap:6 }}>
-                  <input value={anthropicKey} onChange={function(e){ setAnthropicKey(e.target.value); }}
+                  <input
+                    value={
+                      selProv.id === "gemini_flash" ? geminiKey :
+                      selProv.id === "groq_free"    ? groqKeyVal :
+                      anthropicKey
+                    }
+                    onChange={function(e){
+                      if (selProv.id === "gemini_flash")     setGeminiKey(e.target.value);
+                      else if (selProv.id === "groq_free")   setGroqKeyVal(e.target.value);
+                      else                                   setAnthropicKey(e.target.value);
+                    }}
                     placeholder={selProv.keyPlaceholder}
                     style={{ flex:1,background:"#020508",border:"1px solid #2a1a4a",borderRadius:7,padding:"8px 12px",color:"#cce0ff",fontSize:11,fontFamily:"'Share Tech Mono',monospace",outline:"none" }}/>
                   <button onClick={function(){ window.open(selProv.keyUrl,"_blank"); }}
