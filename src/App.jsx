@@ -88,6 +88,21 @@ var AI_PROVIDERS = [
     resetDaily: false,
     dailyLimit: null,
   },
+  {
+    id: "gemini_flash",
+    name: "Gemini",
+    label: "GRATIS",
+    color: "#4285f4",
+    costPer: "Rp 0",
+    desc: "Google Gemini 2.0 Flash, 1500/hari",
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+    model: "gemini-2.0-flash",
+    keyLabel: "Google AI Studio API Key (aistudio.google.com — gratis)",
+    keyPlaceholder: "AIza...",
+    keyUrl: "https://aistudio.google.com/app/apikey",
+    resetDaily: true,
+    dailyLimit: 1500,
+  },
 ];
 // Legacy alias
 var AI_MODELS = AI_PROVIDERS;
@@ -446,7 +461,31 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
   var isGroq = provider.id && provider.id.includes("groq");
   var rawText = null;
 
-  // ── Try Groq (production only — may be blocked in browser sandbox) ──
+  // ── Try Google Gemini ──────────────────────────────────────────────
+  var isGemini = provider && provider.id === "gemini_flash";
+  if (isGemini && extras && extras.geminiKey) {
+    try {
+      var gemUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + extras.geminiKey;
+      var gemRes = await fetch(gemUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: sysPrompt + "\n\n" + prompt }] }],
+          generationConfig: { maxOutputTokens: 400, temperature: 0.1 },
+        }),
+      });
+      if (!gemRes.ok) throw new Error("HTTP " + gemRes.status);
+      var gemData = await gemRes.json();
+      var gemText = gemData.candidates && gemData.candidates[0] &&
+        gemData.candidates[0].content && gemData.candidates[0].content.parts[0].text;
+      if (gemText) rawText = gemText;
+    } catch(gemErr) {
+      console.warn("Gemini error:", gemErr.message);
+      rawText = null;
+    }
+  }
+
+  // ── Try Groq (may be blocked by CORS in browser) ────────────────
   if (isGroq) {
     try {
       var groqHeaders = { "Content-Type": "application/json" };
@@ -475,11 +514,13 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
     } catch(groqErr) {
       if (groqErr.message === "RATE_LIMIT") throw groqErr;
       if (groqErr.message === "INVALID_API_KEY") throw groqErr;
-      // CORS / network error dari browser → set flag tapi coba Anthropic fallback
-      if (groqErr.name === "TypeError" || groqErr.message.includes("Failed to fetch") || groqErr.message.includes("CORS")) {
-        console.warn("Groq CORS blocked - falling back to Anthropic");
+      if (groqErr.name === "TypeError" || String(groqErr).includes("fetch") || String(groqErr).includes("CORS")) {
+        // Groq blocked by CORS - this is normal in browser
+        // Gemini Flash works without CORS issues
+        console.warn("Groq CORS blocked - use Gemini (free) or enable 24/7 backend");
+        throw { message: "CORS", isCors: true };
       }
-      rawText = null; // fall through to Anthropic
+      rawText = null;
     }
   }
 
@@ -749,6 +790,192 @@ function CandleChart(props) {
 }
 
 
+// ═══════════════════════════════════════════════════════════════
+//  BACKTEST ENGINE
+// ═══════════════════════════════════════════════════════════════
+function BacktestTab(props) {
+  var config = props.config;
+  var [running, setRunning] = useState(false);
+  var [result,  setResult]  = useState(null);
+  var [pair,    setPair]    = useState("BTCUSDT");
+  var [days,    setDays]    = useState(30);
+  var [progress,setProgress]= useState(0);
+  var [err,     setErr]     = useState("");
+
+  async function runBacktest() {
+    setRunning(true); setResult(null); setErr(""); setProgress(0);
+    try {
+      // Fetch historical klines
+      var limit = days * 24 * 2; // 30min candles
+      var interval = "30m";
+      setProgress(10);
+      var res = await fetch("https://api.binance.com/api/v3/klines?symbol=" + pair + "&interval=" + interval + "&limit=" + Math.min(limit, 1000));
+      var klines = await res.json();
+      if (!Array.isArray(klines) || klines.length < 50) {
+        setErr("Data tidak cukup. Coba pair lain."); setRunning(false); return;
+      }
+      setProgress(30);
+
+      // Calculate indicators and generate signals
+      var closes = klines.map(function(k){ return parseFloat(k[4]); });
+      var trades = [];
+      var equity = 1000; // start $1000
+      var initEq = 1000;
+      var inPos  = null;
+
+      for (var i = 50; i < klines.length; i++) {
+        setProgress(30 + Math.floor((i / klines.length) * 60));
+        var slice = closes.slice(i-50, i);
+        var rsi   = calcSimpleRSI(slice, 14);
+        var ma7   = slice.slice(-7).reduce(function(a,b){return a+b;},0)/7;
+        var ma25  = slice.slice(-25).reduce(function(a,b){return a+b;},0)/25;
+        var price = closes[i];
+        var ts    = klines[i][0];
+
+        // Signal logic
+        var signal = "HOLD";
+        if (!inPos) {
+          if (rsi < 35 && price > ma7 && ma7 > ma25) signal = "BUY";
+          else if (rsi > 65 && price < ma7 && ma7 < ma25) signal = "SELL";
+        }
+
+        if (signal !== "HOLD" && !inPos) {
+          var size = equity * 0.015;
+          inPos = { action:signal, entry:price, size:size, ts:ts };
+        }
+
+        if (inPos) {
+          var pnlPct = inPos.action==="BUY" ? (price-inPos.entry)/inPos.entry : (inPos.entry-price)/inPos.entry;
+          // Exit on TP or SL
+          if (pnlPct >= 0.04 || pnlPct <= -0.02 || i === klines.length - 1) {
+            var pnl = inPos.size * pnlPct - inPos.size * 0.001; // 0.1% fee
+            equity += pnl;
+            trades.push({ ts:ts, pair:pair, action:inPos.action, entry:inPos.entry, exit:price, pnl:pnl, pnlPct:pnlPct*100 });
+            inPos = null;
+          }
+        }
+      }
+
+      setProgress(100);
+      var wins     = trades.filter(function(t){return t.pnl>0;});
+      var losses   = trades.filter(function(t){return t.pnl<=0;});
+      var totalPnl = equity - initEq;
+      var maxDD    = calcMaxDrawdown(trades, initEq);
+
+      setResult({
+        trades:    trades,
+        totalTrades: trades.length,
+        wins:      wins.length,
+        losses:    losses.length,
+        winRate:   trades.length > 0 ? Math.round(wins.length/trades.length*100) : 0,
+        totalPnl:  Math.round(totalPnl*100)/100,
+        totalPct:  Math.round(totalPnl/initEq*10000)/100,
+        maxDD:     maxDD,
+        equity:    Math.round(equity*100)/100,
+        pair:      pair, days:days,
+      });
+    } catch(e) {
+      setErr("Error: " + e.message);
+    }
+    setRunning(false);
+  }
+
+  function calcSimpleRSI(closes, period) {
+    if (closes.length < period+1) return 50;
+    var gains=0,losses=0;
+    for (var i=closes.length-period;i<closes.length;i++){
+      var d=closes[i]-closes[i-1];
+      if(d>0)gains+=d;else losses-=d;
+    }
+    if(losses===0)return 100;
+    return 100-(100/(1+(gains/period)/(losses/period)));
+  }
+
+  function calcMaxDrawdown(trades, initEq) {
+    var eq=initEq, peak=initEq, maxDD=0;
+    trades.forEach(function(t){ eq+=t.pnl; if(eq>peak)peak=eq; var dd=(peak-eq)/peak*100; if(dd>maxDD)maxDD=dd; });
+    return Math.round(maxDD*100)/100;
+  }
+
+  var PAIRS = ["BTCUSDT","ETHUSDT","XAUUSDT","BNBUSDT","SOLUSDT"];
+
+  return (
+    <div style={{padding:"10px 12px",paddingBottom:80}}>
+      <div style={{fontFamily:"'Orbitron',monospace",fontSize:12,color:"#7ab0ff",fontWeight:700,marginBottom:12}}>🔬 BACKTESTING ENGINE</div>
+
+      {/* Config */}
+      <div style={{background:"rgba(10,20,50,.4)",border:"1px solid #0a1428",borderRadius:8,padding:12,marginBottom:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <div>
+            <div style={{fontSize:8,color:"#2a4a70",marginBottom:4}}>PAIR</div>
+            <select value={pair} onChange={function(e){setPair(e.target.value);}}
+              style={{width:"100%",background:"#020810",border:"1px solid #0a1428",borderRadius:6,padding:"7px 8px",color:"#7ab0ff",fontSize:10,fontFamily:"'Share Tech Mono',monospace",outline:"none"}}>
+              {PAIRS.map(function(p){return <option key={p} value={p}>{p.replace("USDT","/USDT")}</option>;})}
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:8,color:"#2a4a70",marginBottom:4}}>PERIODE (hari)</div>
+            <select value={days} onChange={function(e){setDays(parseInt(e.target.value));}}
+              style={{width:"100%",background:"#020810",border:"1px solid #0a1428",borderRadius:6,padding:"7px 8px",color:"#7ab0ff",fontSize:10,fontFamily:"'Share Tech Mono',monospace",outline:"none"}}>
+              {[7,14,30,60,90].map(function(d){return <option key={d} value={d}>{d} hari</option>;})}
+            </select>
+          </div>
+        </div>
+        <button onClick={runBacktest} disabled={running}
+          style={{width:"100%",background:running?"#0a1428":"linear-gradient(135deg,#003ab0,#006eff)",border:"none",borderRadius:8,padding:11,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:11,fontWeight:700,cursor:running?"default":"pointer"}}>
+          {running ? "Menjalankan... " + progress + "%" : "▶ Jalankan Backtest"}
+        </button>
+        {running&&<div style={{background:"#0a1428",borderRadius:4,height:4,marginTop:8}}><div style={{background:"#5a9fff",height:"100%",borderRadius:4,width:progress+"%",transition:"width .3s"}}/></div>}
+        {err&&<div style={{color:"#ff4d6d",fontSize:9,marginTop:6}}>{err}</div>}
+      </div>
+
+      {/* Results */}
+      {result&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8,marginBottom:10}}>
+            {[
+              {l:"Total Return",v:(result.totalPnl>=0?"+":"")+result.totalPnl.toFixed(2)+" ("+result.totalPct+"%)",c:result.totalPnl>=0?"#00e5a0":"#ff4d6d"},
+              {l:"Win Rate",    v:result.winRate+"%",                                                               c:result.winRate>=50?"#00e5a0":"#ff8800"},
+              {l:"Total Trade", v:result.totalTrades+" trade",                                                     c:"#7ab0ff"},
+              {l:"Max Drawdown",v:result.maxDD+"%",                                                                c:result.maxDD<10?"#00e5a0":"#ff4d6d"},
+              {l:"Menang",      v:result.wins+" trade",                                                            c:"#00e5a0"},
+              {l:"Kalah",       v:result.losses+" trade",                                                          c:"#ff4d6d"},
+            ].map(function(s){
+              return(
+                <div key={s.l} style={{background:"rgba(2,5,16,.96)",border:"1px solid #0a1428",borderRadius:8,padding:"10px 12px"}}>
+                  <div style={{fontSize:8,color:"#1e3a60",marginBottom:4}}>{s.l}</div>
+                  <div style={{fontFamily:"'Orbitron',monospace",fontSize:13,color:s.c,fontWeight:700}}>{s.v}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Trade list */}
+          <div style={{fontSize:9,color:"#2a4a70",marginBottom:6}}>
+            RIWAYAT SIGNAL ({result.pair}, {result.days} hari)
+          </div>
+          <div style={{maxHeight:280,overflowY:"auto"}}>
+            {result.trades.slice(-20).reverse().map(function(t,i){
+              return(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #080e22",fontSize:9}}>
+                  <span style={{color:"#1e3a60"}}>{new Date(t.ts).toLocaleDateString("id-ID",{month:"short",day:"numeric"})}</span>
+                  <span style={{color:t.action==="BUY"?"#00e5a0":"#ff4d6d",fontWeight:700}}>{t.action}</span>
+                  <span style={{color:"#2a4a70"}}>${t.entry.toFixed(0)}→${t.exit.toFixed(0)}</span>
+                  <span style={{color:t.pnl>=0?"#00e5a0":"#ff4d6d",fontFamily:"'Orbitron',monospace"}}>{t.pnl>=0?"+":""}{t.pnl.toFixed(2)}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{fontSize:8,color:"#1e3a60",marginTop:8,lineHeight:1.7,background:"rgba(0,0,0,.2)",borderRadius:6,padding:8}}>
+            ⚠️ Hasil backtest berdasarkan data historis dan tidak menjamin profit di masa depan. Modal awal simulasi: $1,000
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EquityCurve(props) {
   var history=props.history||[], h=props.h||80;
   if (history.length<2) return <div style={{height:h,display:"flex",alignItems:"center",justifyContent:"center",color:"#0e1e40",fontSize:9}}>Belum ada data equity</div>;
@@ -818,7 +1045,15 @@ function ConfRing(props) {
 // ─── SETTINGS MODAL — Fix #12 ─────────────────────────────────
 function SettingsModal(props) {
   var settings=props.settings, onChange=props.onChange, onClose=props.onClose;
-  var [local, setLocal] = useState(Object.assign({},settings));
+  var onConfigChange = props.onConfigChange || function(){};
+  var cfg = props.config || {};
+  // Merge settings + config keys into local state
+  var [local, setLocal] = useState(Object.assign({
+    aiModel:      cfg.aiModel      || "groq_free",
+    geminiKey:    cfg.geminiKey    || "",
+    groqKey:      cfg.groqKey      || "",
+    anthropicKey: cfg.anthropicKey || "",
+  }, settings));
   function upd(key,val){setLocal(function(p){var _s=Object.assign({},p);_s[key]=val;return _s;});}
   var sliders=[
     {key:"riskPct",   label:"Risk per Trade (%)",      min:.5,  max:5,   step:.5,  unit:"%"},
@@ -928,7 +1163,7 @@ function SettingsModal(props) {
           })()}
 
           {/* WhatsApp / Telegram notif */}
-          <div style={{background:"rgba(0,30,10,.2)",border:"1px solid #003a18",borderRadius:8,padding:12,marginBottom:8}}>
+          <div style={{background:"rgba(0,30,10,.2)",border:"1px solid #003a18",borderRadius:8,padding:12,marginBottom:12}}>
             <div style={{fontSize:8.5,color:"#2a7a50",letterSpacing:1.5,marginBottom:8}}>NOTIFIKASI TELEGRAM</div>
             <input value={local.waNumber||""} onChange={function(e){upd("waNumber",e.target.value);}}
               placeholder="Username Telegram kamu (contoh: Restu_hidayat30)"
@@ -938,12 +1173,41 @@ function SettingsModal(props) {
             </div>
           </div>
 
+          {/* 2FA PIN Lock */}
+          <div style={{background:"rgba(0,20,40,.3)",border:"1px solid #0a2040",borderRadius:8,padding:12,marginBottom:8}}>
+            <div style={{fontSize:8.5,color:"#5a9fff",letterSpacing:1.5,marginBottom:8}}>🔒 PIN LOCK (2FA)</div>
+            <div style={{fontSize:9,color:"#2a4a70",marginBottom:8}}>
+              {localStorage.getItem("nt_pin_hash") ? "PIN aktif — masukkan PIN baru untuk ganti, atau kosongkan untuk hapus PIN" : "Set PIN 6 digit untuk keamanan tambahan"}
+            </div>
+            <input type="password" value={local.newPin||""} onChange={function(e){upd("newPin",e.target.value.replace(/\D/g,"").slice(0,6));}}
+              placeholder="PIN baru (6 digit, kosongkan untuk hapus)"
+              style={{width:"100%",background:"#020508",border:"1px solid #0a1428",borderRadius:6,padding:"8px 10px",color:"#cce0ff",fontSize:10,fontFamily:"'Share Tech Mono',monospace",outline:"none"}}/>
+          </div>
+
         </div>
       </div>
 
       {/* Footer sticky */}
       <div className="nt-settings-foot">
-        <button onClick={function(){onChange(local);onClose();}}
+        <button onClick={function(){
+            onChange(local);
+            onConfigChange(Object.assign({}, cfg, {
+              aiModel:      local.aiModel      || cfg.aiModel,
+              geminiKey:    local.geminiKey    || cfg.geminiKey    || "",
+              groqKey:      local.groqKey      || cfg.groqKey      || "",
+              anthropicKey: local.anthropicKey || cfg.anthropicKey || "",
+            }));
+            // Save PIN if provided
+            if (local.newPin && local.newPin.length === 6) {
+              var h = 0;
+              for (var i = 0; i < local.newPin.length; i++) { h = (h << 5) - h + local.newPin.charCodeAt(i); h |= 0; }
+              localStorage.setItem("nt_pin_hash", String(h));
+              alert("PIN berhasil diset!");
+            } else if (local.newPin === "") {
+              localStorage.removeItem("nt_pin_hash");
+            }
+            onClose();
+          }}
           style={{width:"100%",background:"linear-gradient(135deg,#003ab0,#006eff)",border:"none",borderRadius:10,padding:14,color:"#fff",fontFamily:"'Orbitron',monospace",fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1}}>
           Simpan Pengaturan
         </button>
@@ -2679,7 +2943,7 @@ function Dashboard(props) {
             <span style={{background:"linear-gradient(135deg,#ff4d6d,#ff8f6b)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>TRADE</span>
           </div>
           <div className="nt-sidebar-nav">
-          {[{id:"trade",icon:"📊",label:"Trading"},{id:"history",icon:"📋",label:"History"},{id:"pro",icon:"⭐",label:isPro?"PRO":"Upgrade"}].map(function(tab){
+          {[{id:"trade",icon:"📊",label:"Trading"},{id:"backtest",icon:"🔬",label:"Backtest"},{id:"history",icon:"📋",label:"History"},{id:"pro",icon:"⭐",label:isPro?"PRO":"Upgrade"}].map(function(tab){
             var isAct=navTab===tab.id;
             return <button key={tab.id} onClick={function(){setNavTab(tab.id);}} className={isAct?"active":""}><span style={{fontSize:16}}>{tab.icon}</span> {tab.label}</button>;
           })}
@@ -3021,6 +3285,10 @@ function Dashboard(props) {
         )}
 
         {/* HISTORY TAB — Fix #7 #10 */}
+        {navTab==="backtest"&&(
+          <BacktestTab config={config}/>
+        )}
+
         {navTab==="history"&&(
           <div className="nt-content">
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -3126,7 +3394,7 @@ function Dashboard(props) {
 
       {/* Bottom nav (mobile only) */}
       <div style={{borderTop:"1px solid #080f22",background:"rgba(1,3,12,.98)",display:"grid",gridTemplateColumns:"repeat(3,1fr)",flexShrink:0}} className="nt-bottom-nav">
-        {[{id:"trade",icon:"📊",label:"Trading"},{id:"history",icon:"📋",label:"History"},{id:"pro",icon:"⭐",label:isPro?"PRO":"Upgrade"}].map(function(tab){
+        {[{id:"trade",icon:"📊",label:"Trading"},{id:"backtest",icon:"🔬",label:"Backtest"},{id:"history",icon:"📋",label:"History"},{id:"pro",icon:"⭐",label:isPro?"PRO":"Upgrade"}].map(function(tab){
           var isAct=navTab===tab.id;
           return(<button key={tab.id} onClick={function(){setNavTab(tab.id);}} style={{padding:"9px 0",background:"transparent",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,borderTop:"2px solid "+(isAct?"#0060e0":"transparent")}}>
             <span style={{fontSize:18}}>{tab.icon}</span>
@@ -3136,7 +3404,15 @@ function Dashboard(props) {
       </div>
 
       {/* Overlays */}
-      {showSettings&&<SettingsModal settings={settings} onChange={function(s){setSettings(s);}} onClose={function(){setShowSett(false);}}/>}
+      {showSettings&&<SettingsModal
+        settings={settings}
+        config={config}
+        onChange={function(s){setSettings(s);}}
+        onConfigChange={function(newCfg){
+          setConfig(newCfg);
+          saveSession(user&&user.email?user.email:"", user&&user.tier?user.tier:"free", newCfg);
+        }}
+        onClose={function(){setShowSett(false);}}/>}
       {showUpg&&<UpgradeScreen user={user} onClose={function(){setShowUpg(false);}} onUpgrade={function(plan){if(plan.id==="trial"){props.onUpgrade("trial");setShowUpg(false);return;}setPayPlan(plan);setShowPay(true);setShowUpg(false);}}/>}
       {showPayment&&payPlan&&<QRISPayment plan={payPlan} onClose={function(){setShowPay(false);setPayPlan(null);}} onSuccess={function(){setShowPay(false);props.onUpgrade(payPlan.id);}}/>}
       {confirm&&<ConfirmDialog msg={confirm.msg} danger={confirm.danger} onYes={confirm.onYes} onNo={confirm.onNo}/>}
@@ -3188,6 +3464,43 @@ function saveKeys(cfg) {
     localStorage.setItem("nt_cfg", encoded);
   } catch(e) {}
 }
+// ── ENCRYPTION (AES-GCM via Web Crypto) ───────────────────────
+var NT_ENC_KEY = null;
+
+async function getEncKey() {
+  if (NT_ENC_KEY) return NT_ENC_KEY;
+  // Derive key from device fingerprint
+  var fp = (navigator.userAgent + screen.width + screen.height + navigator.language).slice(0,32);
+  var raw = new TextEncoder().encode(fp.padEnd(32,"x").slice(0,32));
+  NT_ENC_KEY = await crypto.subtle.importKey("raw", raw, {name:"AES-GCM"}, false, ["encrypt","decrypt"]);
+  return NT_ENC_KEY;
+}
+
+async function encryptData(obj) {
+  try {
+    var key  = await getEncKey();
+    var iv   = crypto.getRandomValues(new Uint8Array(12));
+    var data = new TextEncoder().encode(JSON.stringify(obj));
+    var enc  = await crypto.subtle.encrypt({name:"AES-GCM",iv}, key, data);
+    var buf  = new Uint8Array(iv.length + enc.byteLength);
+    buf.set(iv, 0); buf.set(new Uint8Array(enc), iv.length);
+    return btoa(String.fromCharCode.apply(null, buf));
+  } catch(e) { return btoa(JSON.stringify(obj)); } // fallback
+}
+
+async function decryptData(str) {
+  try {
+    var key = await getEncKey();
+    var buf = Uint8Array.from(atob(str), function(c){return c.charCodeAt(0);});
+    var iv  = buf.slice(0,12);
+    var enc = buf.slice(12);
+    var dec = await crypto.subtle.decrypt({name:"AES-GCM",iv}, key, enc);
+    return JSON.parse(new TextDecoder().decode(dec));
+  } catch(e) {
+    try { return JSON.parse(atob(str)); } catch(e2) { return null; }
+  }
+}
+
 // ── SESSION STORAGE v3 (plain JSON, reliable) ─────────────────
 var NT_SESSION_KEY = "nt_v3_session";
 
@@ -3248,6 +3561,60 @@ function loadKeys() {
 }
 function clearKeys() {
   try { localStorage.removeItem("nt_cfg"); } catch(e) {}
+}
+
+// ─── PIN LOCK SCREEN ──────────────────────────────────────────
+function PinLockScreen(props) {
+  var [pin, setPin] = useState("");
+  var [err, setErr] = useState("");
+  var savedHash = localStorage.getItem("nt_pin_hash") || "";
+
+  function hashPin(p) {
+    // Simple hash (not crypto - just for UX lock)
+    var h = 0;
+    for (var i = 0; i < p.length; i++) { h = (h << 5) - h + p.charCodeAt(i); h |= 0; }
+    return String(h);
+  }
+
+  function checkPin() {
+    if (!savedHash) { props.onPass(); return; }
+    if (hashPin(pin) === savedHash) { props.onPass(); }
+    else { setErr("PIN salah"); setPin(""); }
+  }
+
+  if (!savedHash) { props.onPass(); return null; }
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#020810",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20,padding:20}}>
+      <div style={{fontFamily:"'Orbitron',monospace",fontSize:22,fontWeight:900}}>
+        <span style={{color:"#5a9fff"}}>NEURA</span><span style={{color:"#ff6b6b"}}>TRADE</span>
+      </div>
+      <div style={{fontSize:11,color:"#2a4a70",letterSpacing:2}}>MASUKKAN PIN</div>
+      <div style={{display:"flex",gap:8}}>
+        {[0,1,2,3,4,5].map(function(i){
+          return <div key={i} style={{width:12,height:12,borderRadius:"50%",background:pin.length>i?"#5a9fff":"#0a1428",transition:"all .15s"}}/>;
+        })}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,maxWidth:220}}>
+        {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(function(k){
+          return(
+            <button key={String(k)} onClick={function(){
+              if (k === "⌫") { setPin(function(p){return p.slice(0,-1);}); setErr(""); }
+              else if (k !== "") {
+                var np = pin + String(k);
+                setPin(np);
+                if (np.length === 6) { setTimeout(function(){ if (hashPin(np) === savedHash) props.onPass(); else { setErr("PIN salah"); setPin(""); } }, 100); }
+              }
+            }}
+            style={{background:k===""?"transparent":"rgba(20,40,80,.5)",border:"1px solid #0a1428",borderRadius:12,padding:16,color:"#7ab0ff",fontSize:18,fontFamily:"'Orbitron',monospace",cursor:k===""?"default":"pointer"}}>
+              {k}
+            </button>
+          );
+        })}
+      </div>
+      {err&&<div style={{color:"#ff4d6d",fontSize:10}}>{err}</div>}
+    </div>
+  );
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────
@@ -3543,6 +3910,11 @@ export default function App() {
   var isPro = user && user.tier !== "free";
 
   // ── Prevent black screen on refresh ──────────────────────────
+  // Show PIN lock if session exists and PIN is set
+  if (appReady && !pinPassed && localStorage.getItem("nt_pin_hash")) {
+    return <PinLockScreen onPass={function(){ setPinPassed(true); }}/>;
+  }
+
   if (!appReady) {
     return (
       <div style={{minHeight:"100vh",background:"#020810",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
@@ -3590,9 +3962,10 @@ export default function App() {
         .nt-sidebar-nav button:hover:not(.active){background:rgba(255,255,255,.04);color:#4a6a90}
         .nt-main{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
         .nt-content{padding:10px 12px;min-height:100%;padding-bottom:70px}
-        .nt-bottom-nav{display:flex;border-top:1px solid #080f22;background:rgba(1,3,12,.98);flex-shrink:0}
-        .nt-bottom-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px;background:transparent;border:none;cursor:pointer;color:#2a4a70;font-family:'Share Tech Mono',monospace;font-size:9px;gap:3px;transition:all .15s}
-        .nt-bottom-nav button.active{color:#5a90df;background:rgba(0,80,200,.08)}
+        .nt-bottom-nav{display:flex;border-top:1px solid #080f22;background:rgba(1,3,12,.98);flex-shrink:0;min-height:56px}
+        .nt-bottom-nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px;background:transparent;border:none;cursor:pointer;color:#3a5a80;font-family:'Share Tech Mono',monospace;font-size:10px;gap:4px;transition:all .15s;min-height:52px}
+        .nt-bottom-nav button.active{color:#7ab0ff;background:rgba(0,80,200,.12);border-top:2px solid #5a90df}
+        .nt-bottom-nav button:not(.active){border-top:2px solid transparent}
 
         @media(min-width:768px){
           .nt-sidebar{display:flex!important}
