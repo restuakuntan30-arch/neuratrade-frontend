@@ -2470,12 +2470,14 @@ function Dashboard(props) {
       msg:"Analyzing "+pairs.length+" pairs | 7 indicators | MTF | "+(regimeCurrent?regimeCurrent.type:"detecting regime...")});
     try{
       var cfg=settingsRef.current;
-      var selProv = AI_PROVIDERS.find(function(p){return p.id===(config.aiModel||AI_PROVIDERS[0].id);})||AI_PROVIDERS[0];
+      // Always read LATEST config (not stale closure)
+      var latestCfg = configRef.current || config;
+      var selProv = AI_PROVIDERS.find(function(p){return p.id===(latestCfg.aiModel||AI_PROVIDERS[0].id);})||AI_PROVIDERS[0];
       var decision=await getAIDecision(snapshot,portfolioRef.current,cfg,{
-        provider: selProv,
-        anthropicKey: config.anthropicKey || "",
-        groqKey:      config.groqKey      || "",
-        geminiKey:    config.geminiKey    || "",
+        provider:     selProv,
+        anthropicKey: latestCfg.anthropicKey || "",
+        groqKey:      latestCfg.groqKey      || "",
+        geminiKey:    latestCfg.geminiKey    || "",
       });
       setAiDec(decision);setAiCycle(function(c){return c+1;});
       setErrCount(0);
@@ -2576,7 +2578,7 @@ function Dashboard(props) {
           msg:"KREDIT HABIS — AI berhenti otomatis. Isi ulang kredit di console.anthropic.com lalu tekan Resume."});
         setAiErr("CREDIT_EXHAUSTED");
       } else if (errMsg === "RATE_LIMIT") {
-        var selProv = AI_PROVIDERS.find(function(p){return p.id===(config.aiModel||AI_PROVIDERS[0].id);})||AI_PROVIDERS[0];
+        var selProv = AI_PROVIDERS.find(function(p){return p.id===((configRef.current||config).aiModel||AI_PROVIDERS[0].id);})||AI_PROVIDERS[0];
         if (selProv.resetDaily) {
           // Groq daily limit — pause & schedule auto-resume at midnight UTC (07:00 WIB)
           setPhase("paused");
@@ -3221,6 +3223,10 @@ function Dashboard(props) {
         onConfigChange={function(newCfg){
           setConfig(newCfg);
           saveSession(user&&user.email?user.email:"", user&&user.tier?user.tier:"free", newCfg);
+          // Reset AI error counter so new provider can start fresh
+          setErrCount(0);
+          setAiErr("");
+          addLog&&addLog({type:"sys",color:"#ffd93d",msg:"AI Provider berganti ke: "+(newCfg.aiModel||"groq_free")});
         }}
         onClose={function(){setShowSett(false);}}/>}
       {showUpg&&<UpgradeScreen user={user} onClose={function(){setShowUpg(false);}} onUpgrade={function(plan){if(plan.id==="trial"){props.onUpgrade("trial");setShowUpg(false);return;}setPayPlan(plan);setShowPay(true);setShowUpg(false);}}/>}
