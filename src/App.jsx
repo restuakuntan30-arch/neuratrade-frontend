@@ -2579,26 +2579,33 @@ function Dashboard(props) {
         setAiErr("CREDIT_EXHAUSTED");
       } else if (errMsg === "RATE_LIMIT") {
         var selProv = AI_PROVIDERS.find(function(p){return p.id===((configRef.current||config).aiModel||AI_PROVIDERS[0].id);})||AI_PROVIDERS[0];
-        if (selProv.resetDaily) {
-          // Groq daily limit — pause & schedule auto-resume at midnight UTC (07:00 WIB)
+        if (selProv.id === "groq_free") {
+          // Groq daily limit — pause & auto-resume at midnight UTC (07:00 WIB)
           setPhase("paused");
           clearInterval(aiTimerRef.current); clearInterval(cdTimerRef.current);
           var now = new Date();
           var midnight = new Date(now);
-          midnight.setUTCHours(24,0,0,0); // next UTC midnight
+          midnight.setUTCHours(24,0,0,0);
           var msUntilReset = midnight - now;
           var hoursLeft = (msUntilReset / 3600000).toFixed(1);
           addLog({type:"warn",color:"#ff6b35",
-            msg:"Groq limit harian tercapai. Bot berhenti. Auto-resume dalam " + hoursLeft + " jam (07:00 WIB)."});
+            msg:"Groq limit harian tercapai. Auto-resume dalam " + hoursLeft + " jam. Atau ganti ke Gemini di Settings."});
           setAiErr("DAILY_LIMIT");
-          // Auto resume when Groq resets
           setTimeout(function(){
             setAiErr(null); setPhase("running");
             setTokenUsage(function(prev){ return {calls:0,estimatedCost:0,date:new Date().toDateString()}; });
-            addLog({type:"sys",color:"#ff6b35",msg:"Groq limit reset! AI dilanjutkan otomatis."});
+            addLog({type:"sys",color:"#ff6b35",msg:"Groq limit reset! AI dilanjutkan."});
           }, msUntilReset);
+        } else if (selProv.resetDaily) {
+          // Gemini dan provider lain - rate limit per menit, retry 60 detik
+          addLog({type:"warn",color:"#ffa000",msg:selProv.name+" rate limit - retry dalam 60 detik..."});
+          setErrCount(0); // reset error counter
+          setTimeout(function(){
+            addLog({type:"sys",color:"#4285f4",msg:selProv.name+" retry sekarang..."});
+          }, 60000);
         } else {
           addLog({type:"warn",color:"#ffa000",msg:"Rate limit — menunggu 30 detik..."});
+;
           setAiErr("RATE_LIMIT");
           setTimeout(function(){ setAiErr(null); }, 30000);
         }
@@ -2743,7 +2750,18 @@ function Dashboard(props) {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {phase==="running"&&!aiThink&&<span style={{fontSize:8,color:"#1e3a60"}}>AI:<span style={{color:"#2a5a8a"}}>{countdown}s</span></span>}
           {aiThink&&<div style={{display:"flex",gap:2}}>{[0,1,2].map(function(i){return <div key={i} style={{width:4,height:4,borderRadius:"50%",background:"#5a8fff",animation:"pulse 1.2s "+(i*.2)+"s infinite"}}/>;})}</div>}
-          {aiErr&&<span style={{fontSize:8,color:"#ff8800",background:"rgba(80,40,0,.2)",border:"1px solid #4a2800",borderRadius:4,padding:"1px 7px"}}>Error {errCount}/3</span>}
+          {aiErr&&(
+            <span style={{fontSize:8,color:"#ff8800",background:"rgba(80,40,0,.2)",border:"1px solid #4a2800",borderRadius:4,padding:"2px 8px",cursor:"pointer"}}
+              onClick={function(){
+                if(aiErr==="DAILY_LIMIT"){
+                  if(window.confirm("Groq limit tercapai.\n\nKlik OK untuk restart AI dengan provider saat ini.\n(Pastikan sudah ganti ke Gemini di Settings)")){
+                    setAiErr(null);setErrCount(0);setPhase("running");
+                  }
+                } else { setAiErr(null);setErrCount(0); }
+              }}>
+              ⚠ {aiErr==="DAILY_LIMIT"?"Groq Limit — Tap Fix":aiErr==="CORS"?"CORS Error":"Error "+errCount+"/3"}
+            </span>
+          )}
           <button onClick={function(){setShowSett(true);}} style={{background:"transparent",border:"1px solid #0a1428",borderRadius:5,padding:"2px 7px",color:"#1e3a60",cursor:"pointer",fontSize:8.5,fontFamily:"'Share Tech Mono',monospace"}}>⚙</button>
           <div style={{fontSize:8.5,color:"#1e3a60"}}>{user.email.split("@")[0]}</div>
           <button onClick={handleLogoutRequest} style={{background:"transparent",border:"1px solid #0a1428",borderRadius:5,padding:"2px 7px",color:"#1e3a60",cursor:"pointer",fontSize:8,fontFamily:"'Share Tech Mono',monospace"}}>Keluar</button>
@@ -3223,10 +3241,11 @@ function Dashboard(props) {
         onConfigChange={function(newCfg){
           setConfig(newCfg);
           saveSession(user&&user.email?user.email:"", user&&user.tier?user.tier:"free", newCfg);
-          // Reset AI error counter so new provider can start fresh
+          // Reset semua error state dan RESTART bot dengan provider baru
           setErrCount(0);
           setAiErr("");
-          addLog&&addLog({type:"sys",color:"#ffd93d",msg:"AI Provider berganti ke: "+(newCfg.aiModel||"groq_free")});
+          setPhase("running"); // force restart even if paused due to daily limit
+          addLog&&addLog({type:"sys",color:"#00e5a0",msg:"AI Provider berganti ke: "+(newCfg.aiModel||"groq_free")+" - Bot di-restart!"});
         }}
         onClose={function(){setShowSett(false);}}/>}
       {showUpg&&<UpgradeScreen user={user} onClose={function(){setShowUpg(false);}} onUpgrade={function(plan){if(plan.id==="trial"){props.onUpgrade("trial");setShowUpg(false);return;}setPayPlan(plan);setShowPay(true);setShowUpg(false);}}/>}
