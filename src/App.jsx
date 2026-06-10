@@ -187,26 +187,38 @@ function pctChg(arr,n){if(arr.length<n+1)return 0;return parseFloat(((arr[arr.le
 // ADX — trend strength (>25 trending, <20 ranging)
 function calcADX(ohlcArr, period) {
   period = period || 14;
-  if (!ohlcArr || ohlcArr.length < period + 2) return 25;
+  if (!ohlcArr || ohlcArr.length < period * 2) return 25;
   var pdm = [], ndm = [], tr = [];
   for (var i = 1; i < ohlcArr.length; i++) {
     var c = ohlcArr[i], p = ohlcArr[i-1];
     var up = c.h - p.h, down = p.l - c.l;
     pdm.push(up > down && up > 0 ? up : 0);
     ndm.push(down > up && down > 0 ? down : 0);
-    tr.push(Math.max(c.h - c.l, Math.abs(c.h - p.c), Math.abs(c.l - p.c)));
+    tr.push(Math.max(c.h - c.l, Math.abs(c.h - (p.c||p.l)), Math.abs(c.l - (p.c||p.h))));
   }
+  // Wilder smoothing: start = sum of first `period` values, then smooth
   function wilder(arr, p) {
-    var r = [arr.slice(0,p).reduce(function(a,b){return a+b;},0)];
-    for (var i = p; i < arr.length; i++) r.push(r[r.length-1] - r[r.length-1]/p + arr[i]);
+    if (arr.length < p) return [0];
+    var first = arr.slice(0,p).reduce(function(a,b){return a+b;},0); // sum, not avg
+    var r = [first];
+    for (var i = p; i < arr.length; i++) {
+      r.push(r[r.length-1] - r[r.length-1]/p + arr[i]);
+    }
     return r;
   }
-  var sTR = wilder(tr, period), sPDM = wilder(pdm, period), sNDM = wilder(ndm, period);
-  var diP = sPDM.map(function(v,i){return sTR[i]>0?v/sTR[i]*100:0;});
-  var diN = sNDM.map(function(v,i){return sTR[i]>0?v/sTR[i]*100:0;});
-  var dx  = diP.map(function(v,i){var s=v+diN[i];return s>0?Math.abs(v-diN[i])/s*100:0;});
+  var sTR  = wilder(tr,  period);
+  var sPDM = wilder(pdm, period);
+  var sNDM = wilder(ndm, period);
+  // DI = (smoothed DM / smoothed TR) * 100 — capped at 100
+  var diP = sPDM.map(function(v,i){ return sTR[i]>0 ? Math.min(v/sTR[i]*100, 100) : 0; });
+  var diN = sNDM.map(function(v,i){ return sTR[i]>0 ? Math.min(v/sTR[i]*100, 100) : 0; });
+  var dx  = diP.map(function(v,i){
+    var s = v + diN[i];
+    return s > 0 ? Math.min(Math.abs(v-diN[i])/s*100, 100) : 0;
+  });
   var adx = wilder(dx, period);
-  return parseFloat((adx[adx.length-1]||25).toFixed(1));
+  var raw = adx[adx.length-1] || 25;
+  return parseFloat(Math.min(Math.max(raw, 0), 100).toFixed(1));
 }
 
 // Stochastic RSI — more sensitive momentum oscillator
@@ -457,7 +469,7 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
     '"riskPct":2.0,"targetPct":3.5,"stopPct":1.2}'
   );
 
-  var sysPrompt = "You are an elite quantitative trading AI. Your job is to find HIGH PROBABILITY trade setups only. Return ONLY a raw valid JSON object. No markdown, no backtick, no explanation outside JSON.";
+  var sysPrompt = "You are an elite quantitative trading AI. Return ONLY valid JSON. No markdown, no backticks. Fields: action(BUY/SELL/HOLD), confidence(0-100), signal, reason, pair.";
   var isGroq = provider.id && provider.id.includes("groq");
   var rawText = null;
 
@@ -568,10 +580,28 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
     rawText = anthData.content[0].text;
   }
 
-  var raw = rawText.trim().replace(/```json|```/g, "").trim();
+  // Clean and parse AI response (handles Groq, Gemini, Anthropic formats)
+  var raw = rawText.trim();
+  // Remove markdown code blocks
+  raw = raw.replace(/```json\n?/gi,"").replace(/```\n?/gi,"").trim();
+  // Remove any text before first { and after last }
   var si = raw.indexOf("{"), ei = raw.lastIndexOf("}");
-  if (si === -1 || ei === -1) throw new Error("Invalid JSON from AI");
-  return JSON.parse(raw.slice(si, ei + 1));
+  if (si === -1 || ei === -1) {
+    // Try to find JSON-like structure anywhere in response
+    var jsonMatch = raw.match(/\{[\s\S]*"action"[\s\S]*\}/);
+    if (jsonMatch) { raw = jsonMatch[0]; si = 0; ei = raw.length - 1; }
+    else throw new Error("No JSON found in AI response: " + raw.slice(0,100));
+  }
+  var jsonStr = raw.slice(si, ei + 1);
+  try {
+    return JSON.parse(jsonStr);
+  } catch(parseErr) {
+    // Try to fix common JSON issues (trailing commas, unquoted keys)
+    var fixed = jsonStr.replace(/,\s*}/g,"}").replace(/,\s*]/g,"]");
+    try { return JSON.parse(fixed); } catch(e2) {
+      throw new Error("JSON parse failed: " + jsonStr.slice(0,80));
+    }
+  }
 }
 
 // ─── CANDLE CHART — supports real OHLC from Binance ──────────
@@ -940,7 +970,7 @@ function SettingsModal(props) {
 
           {/* Sliders */}
           {[
-            {key:"riskPct",     label:"Risk per Trade (%)",          min:0.5, max:5,   step:0.5,  unit:"%"},
+            {key:"riskPct",     label:"Risk per Trade (%)",          min:0.5, max:30,  step:0.5,  unit:"%"},
             {key:"confThresh",  label:"Min Confidence AI (%)",       min:50,  max:90,  step:5,    unit:"%"},
             {key:"aiInterval",  label:"Interval Analisis (detik)",   min:10,  max:120, step:5,    unit:"s"},
             {key:"maxPos",      label:"Max Posisi Terbuka",          min:1,   max:5,   step:1,    unit:""},
@@ -1393,7 +1423,7 @@ function UpgradeScreen(props) {
                     <span style={{fontSize:9,color:f.ok?"#00e5a0":"#1e3a60"}}>{f.ok?"+":"−"}</span>
                     <span style={{fontSize:9.5,color:f.ok?"#3a5a80":"#1e3060"}}>{f.t}</span>
                   </div>
-                );})}
+                </div>);})}
                 {!isCur&&plan.id!=="free"&&<div style={{marginTop:10,background:plan.color+"20",border:"1px solid "+plan.color+"40",borderRadius:7,padding:"7px 0",textAlign:"center",fontFamily:"'Orbitron',monospace",fontSize:9,color:plan.color,fontWeight:700}}>{plan.id==="trial"?"Mulai Trial Gratis":"Pilih Ini"}</div>}
                 {isCur&&<div style={{marginTop:8,fontSize:9,color:plan.color,textAlign:"center"}}>Paket Aktif</div>}
               </div>
@@ -2081,8 +2111,9 @@ function Dashboard(props) {
     fetch("https://api.callmebot.com/text.php?user=@" + user + "&text=" + encodeURIComponent(message))
       .catch(function(){});
   }
-  var [viewPair, setViewPair] = useState(ALL_PAIRS[0]);
-  var [prices,   setPrices]   = useState({});
+  var [viewPair,          setViewPair]          = useState(ALL_PAIRS[0]);
+  var [selectedTradePairs,setSelectedTradePairs] = useState([]); // [] = semua pair, [symbol,...] = pair terpilih
+  var [prices,            setPrices]             = useState({});
   var [history,  setHistory]  = useState({});
   var [indics,   setIndics]   = useState({});
   var [phase,    setPhase]    = useState("idle");
@@ -2452,7 +2483,13 @@ function Dashboard(props) {
   var runAI=useCallback(async function(){
     if (aiRunningRef.current) return; // already running — skip
     aiRunningRef.current = true;
-    var pairs=availPairsRef.current;
+    // If user locked to specific pairs, only trade those
+    var allAvail = availPairsRef.current;
+    var locked   = selectedTradePairs;
+    var pairs    = locked && locked.length > 0
+      ? allAvail.filter(function(p){ return locked.indexOf(p.symbol) !== -1; })
+      : allAvail;
+    if (pairs.length === 0) pairs = allAvail; // fallback
     if(!checkAILimit()){aiRunningRef.current=false;return;}
     if(!checkTrialExpiry()){aiRunningRef.current=false;return;}
 
@@ -2498,6 +2535,50 @@ function Dashboard(props) {
         var posId=Date.now();
         var newPos={id:posId,action:decision.action,pair:decision.pair,cat:decision.cat,entry:entryPx,size:riskAmt,conf:decision.confidence,signal:decision.signal,targetPct:decision.targetPct||1.5,stopPct:decision.stopPct||0.8,time:new Date().toLocaleTimeString()};
         setOpenPos(function(prev){return prev.concat([newPos]);});
+
+        // ── Send REAL order to Binance if mode=real ──────────────
+        var isRealMode = (configRef.current||cfg).mode === "real";
+        var apiKey     = (configRef.current||cfg).apiKey;
+        var secretKey  = (configRef.current||cfg).secretKey;
+        if (isRealMode && apiKey && secretKey) {
+          var qty = parseFloat((riskAmt / entryPx).toFixed(6));
+          var minQty = pairObj.minQty || 0.00001;
+          if (qty >= minQty) {
+            var BACKEND = "https://neuratrade-backend.onrender.com";
+            fetch(BACKEND + "/api/order", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key":  apiKey,
+                "x-secret":   secretKey,
+                "x-exchange": (cfg.exchange && cfg.exchange.name ? cfg.exchange.name : "binance").toLowerCase(),
+              },
+              body: JSON.stringify({
+                symbol:   pairObj.bnb || pairObj.symbol.toUpperCase(),
+                side:     decision.action,
+                type:     "MARKET",
+                quantity: qty,
+                price:    entryPx,
+              }),
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(res){
+              if (res.success) {
+                addLog({type:"trade",color:decision.action==="BUY"?"#00e5a0":"#ff4d6d",
+                  msg:"✅ REAL ORDER: "+decision.action+" "+pairObj.label+" qty:"+qty+" orderId:"+res.orderId});
+              } else {
+                addLog({type:"warn",color:"#ff8800",
+                  msg:"⚠ Order gagal: "+(res.error||"Unknown")+" → fallback simulasi"});
+              }
+            })
+            .catch(function(e){
+              addLog({type:"warn",color:"#ff8800",msg:"⚠ Order error: "+e.message});
+            });
+          } else {
+            addLog({type:"warn",color:"#ff8800",
+              msg:"⚠ Qty terlalu kecil ("+qty+"). Naikkan Risk per Trade di Settings."});
+          }
+        }
         // ── Realistic win probability model ──
         setTimeout(function(){
           var pairAdv=advIndics[pairObj.symbol]||{};
@@ -2737,9 +2818,24 @@ function Dashboard(props) {
             </span>
           </div>
           {config&&config.mode&&(
-            <div style={{display:"flex",alignItems:"center",gap:4,background:config.mode==="real"?"rgba(0,200,50,.08)":"rgba(0,60,200,.08)",border:"1px solid "+(config.mode==="real"?"#004422":"#1a3060"),borderRadius:20,padding:"2px 8px"}}>
+            <div
+              onClick={function(){
+                var toMode = config.mode==="real"?"demo":"real";
+                var msg = toMode==="demo"
+                  ? "Ganti ke mode DEMO?\nSaldo reset ke $5.000 virtual.\nAPI key tetap tersimpan."
+                  : "Ganti ke mode REAL?\nOrder nyata akan dieksekusi ke Binance!\nPastikan API key sudah benar.";
+                if (window.confirm(msg)) {
+                  var newCfg = Object.assign({},config,{mode:toMode,balance:toMode==="demo"?5000:config.balance||5000});
+                  if (props.onModeSwitch) props.onModeSwitch(newCfg);
+                  setPhase("stopped");
+                  setErrCount(0); setAiErr("");
+                  addLog({type:"sys",color:"#ffd93d",msg:"Mode berganti ke "+(toMode==="demo"?"🎮 DEMO (virtual $5.000)":"⚡ REAL TRADING")});
+                }
+              }}
+              style={{display:"flex",alignItems:"center",gap:4,background:config.mode==="real"?"rgba(0,200,50,.08)":"rgba(0,60,200,.08)",border:"1px solid "+(config.mode==="real"?"#004422":"#1a3060"),borderRadius:20,padding:"2px 8px",cursor:"pointer",userSelect:"none"}}
+              title={"Klik untuk ganti ke mode "+(config.mode==="real"?"DEMO":"REAL")}>
               <span style={{fontSize:7.5,color:config.mode==="real"?"#00e5a0":"#5a8ad0",fontFamily:"'Orbitron',monospace",letterSpacing:1}}>
-                {config.mode==="real"?"⚡ REAL":"🎮 DEMO"}
+                {config.mode==="real"?"⚡ REAL":"🎮 DEMO"} ⇄
               </span>
             </div>
           )}
@@ -2873,8 +2969,33 @@ function Dashboard(props) {
 
             {/* Pair strip */}
             <div style={{display:"flex",gap:4,overflowX:"auto",marginBottom:8,paddingBottom:3}}>
-              {ALL_PAIRS.map(function(p){var isAct=viewPair.symbol===p.symbol,locked=p.pro&&!isPro;return(
-                <button key={p.symbol} onClick={function(){if(locked){setShowUpg(true);return;}setViewPair(p);}} style={{background:isAct?"rgba(255,255,255,.03)":"#020508",border:"1px solid "+(isAct?p.color+"44":"#0a1428"),borderRadius:7,padding:"4px 8px",cursor:"pointer",flexShrink:0,opacity:locked?.45:1}}>
+              {ALL_PAIRS.map(function(p){
+                var isAct    = viewPair.symbol===p.symbol;
+                var isLocked = p.pro&&!isPro;
+                var isTrading = selectedTradePairs.length===0 || selectedTradePairs.indexOf(p.symbol)!==-1;
+                return(
+                <div key={p.symbol} style={{position:"relative",display:"inline-block",flexShrink:0}}>
+                  {/* Trade toggle checkbox */}
+                  <div onClick={function(e){
+                    e.stopPropagation();
+                    if(isLocked){setShowUpg(true);return;}
+                    setSelectedTradePairs(function(prev){
+                      if(prev.length===0){
+                        // Currently all selected - deselect all except this one
+                        return ALL_PAIRS.filter(function(q){return !q.pro||isPro;}).map(function(q){return q.symbol;}).filter(function(s){return s!==p.symbol;});
+                      }
+                      var inArr = prev.indexOf(p.symbol)!==-1;
+                      var next  = inArr ? prev.filter(function(s){return s!==p.symbol;}) : prev.concat([p.symbol]);
+                      return next.length===0?[]:next;
+                    });
+                  }}
+                  style={{position:"absolute",top:-4,right:-4,width:14,height:14,borderRadius:"50%",
+                    background:isTrading?"#00e5a0":"#ff4d6d",
+                    border:"1px solid "+(isTrading?"#005530":"#5a0000"),
+                    cursor:"pointer",zIndex:2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,color:"#fff",fontWeight:700}}>
+                    {isTrading?"✓":"✗"}
+                  </div>
+                <button key={p.symbol+"btn"} onClick={function(){if(isLocked){setShowUpg(true);return;}setViewPair(p);}} style={{background:isAct?"rgba(255,255,255,.03)":"#020508",border:"1px solid "+(isAct?p.color+"44":"#0a1428"),borderRadius:7,padding:"4px 8px",cursor:"pointer",flexShrink:0,opacity:locked?.45:1}}>
                   <div style={{fontSize:7,color:p.color}}>{p.cat}</div>
                   <div style={{fontFamily:"'Orbitron',monospace",fontSize:9.5,color:isAct?"#cce0ff":"#3a5a80"}}>{p.label.split("/")[0]}</div>
                   {locked&&<div style={{fontSize:6.5,color:"#ffa000"}}>PRO</div>}
@@ -3738,6 +3859,10 @@ export default function App() {
           onUpgrade={handleUpgrade}
           onTrialExpired={handleTrialExpired}
           onLogout={handleLogout}
+          onModeSwitch={function(newCfg){
+            setConfig(newCfg);
+            saveSession(user&&user.email?user.email:"", user&&user.tier?user.tier:"free", newCfg);
+          }}
         />
       )}
     </div>
