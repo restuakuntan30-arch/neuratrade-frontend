@@ -3000,6 +3000,7 @@ function Dashboard(props) {
                   <div style={{fontFamily:"'Orbitron',monospace",fontSize:9.5,color:isAct?"#cce0ff":"#3a5a80"}}>{p.label.split("/")[0]}</div>
                   {locked&&<div style={{fontSize:6.5,color:"#ffa000"}}>PRO</div>}
                 </button>
+              </div>
               );})}
             </div>
 
