@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 //  NEURATRADE v5 — All 20 Issues Fixed
@@ -3483,6 +3483,26 @@ function clearKeys() {
   try { localStorage.removeItem("nt_cfg"); } catch(e) {}
 }
 
+// ─── ERROR BOUNDARY ────────────────────────────────────────────
+class ErrBound extends React.Component {
+  constructor(p) { super(p); this.state = {err:null}; }
+  componentDidCatch(e) { this.setState({err:String(e)}); }
+  render() {
+    if (this.state.err) {
+      return React.createElement('div', {
+        style:{color:"#ff4d6d",padding:20,fontFamily:"monospace",fontSize:11,background:"#020810",minHeight:"100vh"}
+      }, "Dashboard Error: " + this.state.err + " — Klik untuk reset",
+        React.createElement('br'),
+        React.createElement('button', {
+          onClick: function(){ localStorage.removeItem("nt_v3_session"); location.reload(); },
+          style:{marginTop:10,padding:"8px 16px",background:"#ff4d6d",border:"none",color:"#fff",cursor:"pointer",borderRadius:6}
+        }, "Reset & Login Ulang")
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────
 export default function App() {
   // ── Synchronous init from localStorage (prevents black screen) ──
@@ -3854,17 +3874,19 @@ export default function App() {
         }}/>
       )}
       {screen==="dashboard"&&user&&config&&(
-        <Dashboard
-          user={user}
-          config={config}
-          onUpgrade={handleUpgrade}
-          onTrialExpired={handleTrialExpired}
-          onLogout={handleLogout}
-          onModeSwitch={function(newCfg){
-            setConfig(newCfg);
-            saveSession(user&&user.email?user.email:"", user&&user.tier?user.tier:"free", newCfg);
-          }}
-        />
+        <ErrBound>
+          <Dashboard
+            user={user}
+            config={config}
+            onUpgrade={handleUpgrade}
+            onTrialExpired={handleTrialExpired}
+            onLogout={handleLogout}
+            onModeSwitch={function(newCfg){
+              setConfig(newCfg);
+              saveSession(user&&user.email?user.email:"", user&&user.tier?user.tier:"free", newCfg);
+            }}
+          />
+        </ErrBound>
       )}
     </div>
   );
