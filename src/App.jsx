@@ -414,6 +414,7 @@ function runBacktest(ohlcArr, closes) {
 async function getAIDecision(snapshot, portfolio, settings, extras) {
   var thresh = (settings && settings.confThresh) || 65;
   extras = extras || {};
+  var addLog = extras.addLog || function(){};
   var provider = extras.provider || AI_PROVIDERS[0]; // default: Groq free
 
   var lines = snapshot.map(function(m){
@@ -476,37 +477,51 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
   // ── Try Google Gemini ──────────────────────────────────────────────
   var isGemini = provider && provider.id === "gemini_flash";
   if (isGemini) {
-    if (!extras || !extras.geminiKey) {
-      throw new Error("Gemini dipilih tapi API Key kosong. Isi key di Setup atau Settings.");
+    var gKey = extras && extras.geminiKey ? extras.geminiKey.trim() : "";
+    if (!gKey) {
+      if (typeof addLog === "function") addLog({type:"warn",color:"#ff4d6d",msg:"Gemini: API Key kosong! Isi di Settings."});
+      throw new Error("Gemini API Key kosong");
     }
     try {
-      var gemUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + extras.geminiKey;
+      // Use correct Gemini API format with system_instruction
+      var gemUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + gKey;
+      var gemBody = {
+        system_instruction: { parts: [{ text: "You are a trading AI. Return ONLY valid JSON, no markdown, no explanation. Start with { end with }." }] },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 512, temperature: 0.1, responseMimeType: "application/json" },
+      };
       var gemRes = await fetch(gemUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: sysPrompt + "\n\n" + prompt }] }],
-          generationConfig: { maxOutputTokens: 400, temperature: 0.1 },
-        }),
+        body: JSON.stringify(gemBody),
       });
-      if (gemRes.status === 400) { var e400 = await gemRes.json(); throw new Error("API Key salah: " + (e400.error && e400.error.message || "Bad Request")); }
-      if (gemRes.status === 403) throw new Error("API Key tidak valid atau tidak punya akses Gemini");
-      if (gemRes.status === 429) throw new Error("RATE_LIMIT");
-      if (!gemRes.ok) throw new Error("Gemini HTTP " + gemRes.status);
-      var gemData = await gemRes.json();
-      var gemText = gemData.candidates && gemData.candidates[0] &&
-        gemData.candidates[0].content && gemData.candidates[0].content.parts &&
-        gemData.candidates[0].content.parts[0] && gemData.candidates[0].content.parts[0].text;
+      var gemRaw = await gemRes.text();
+      if (gemRes.status === 429) { throw new Error("RATE_LIMIT"); }
+      if (!gemRes.ok) {
+        var errDetail = "";
+        try { errDetail = JSON.parse(gemRaw).error.message; } catch(e) { errDetail = gemRaw.slice(0,100); }
+        if (typeof addLog === "function") addLog({type:"warn",color:"#ff8800",msg:"Gemini HTTP "+gemRes.status+": "+errDetail});
+        throw new Error("Gemini HTTP " + gemRes.status + ": " + errDetail);
+      }
+      // Parse response
+      var gemData = JSON.parse(gemRaw);
+      var gemText = "";
+      try { gemText = gemData.candidates[0].content.parts[0].text || ""; } catch(e) { gemText = ""; }
+      if (!gemText && gemData.candidates && gemData.candidates[0] && gemData.candidates[0].content) {
+        try { gemText = JSON.stringify(gemData.candidates[0].content); } catch(e) {}
+      }
       if (gemText) {
         rawText = gemText;
+        if (typeof addLog === "function") addLog({type:"sys",color:"#4285f4",msg:"Gemini OK, parsing response..."});
       } else {
-        throw new Error("Gemini tidak ada respons - cek API key");
+        var blockReason = gemData.candidates && gemData.candidates[0] && gemData.candidates[0].finishReason;
+        if (typeof addLog === "function") addLog({type:"warn",color:"#ff8800",msg:"Gemini: tidak ada teks. Reason: "+(blockReason||"unknown")});
+        throw new Error("Gemini empty response: " + (blockReason||"unknown"));
       }
     } catch(gemErr) {
       if (gemErr.message === "RATE_LIMIT") throw gemErr;
-      // Non-fatal Gemini error - log and fall through to Anthropic
-      console.warn("Gemini non-fatal error:", gemErr.message);
-      rawText = null; // Will try Anthropic fallback
+      if (typeof addLog === "function") addLog({type:"warn",color:"#ff8800",msg:"Gemini error: "+gemErr.message+" → coba Anthropic fallback"});
+      rawText = null;
     }
   }
 
@@ -2527,6 +2542,7 @@ function Dashboard(props) {
         anthropicKey: latestCfg.anthropicKey || "",
         groqKey:      latestCfg.groqKey      || "",
         geminiKey:    latestCfg.geminiKey    || "",
+        addLog:       addLog,
       });
       setAiDec(decision);setAiCycle(function(c){return c+1;});
       setErrCount(0);
