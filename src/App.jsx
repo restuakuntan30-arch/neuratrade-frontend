@@ -1424,7 +1424,6 @@ function UpgradeScreen(props) {
                     <span style={{fontSize:9.5,color:f.ok?"#3a5a80":"#1e3060"}}>{f.t}</span>
                   </div>
                 );})}
-                </div>
                 {!isCur&&plan.id!=="free"&&<div style={{marginTop:10,background:plan.color+"20",border:"1px solid "+plan.color+"40",borderRadius:7,padding:"7px 0",textAlign:"center",fontFamily:"'Orbitron',monospace",fontSize:9,color:plan.color,fontWeight:700}}>{plan.id==="trial"?"Mulai Trial Gratis":"Pilih Ini"}</div>}
                 {isCur&&<div style={{marginTop:8,fontSize:9,color:plan.color,textAlign:"center"}}>Paket Aktif</div>}
               </div>
