@@ -2995,10 +2995,10 @@ function Dashboard(props) {
                     cursor:"pointer",zIndex:2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,color:"#fff",fontWeight:700}}>
                     {isTrading?"✓":"✗"}
                   </div>
-                <button key={p.symbol+"btn"} onClick={function(){if(isLocked){setShowUpg(true);return;}setViewPair(p);}} style={{background:isAct?"rgba(255,255,255,.03)":"#020508",border:"1px solid "+(isAct?p.color+"44":"#0a1428"),borderRadius:7,padding:"4px 8px",cursor:"pointer",flexShrink:0,opacity:locked?.45:1}}>
+                <button key={p.symbol+"btn"} onClick={function(){if(isLocked){setShowUpg(true);return;}setViewPair(p);}} style={{background:isAct?"rgba(255,255,255,.03)":"#020508",border:"1px solid "+(isAct?p.color+"44":"#0a1428"),borderRadius:7,padding:"4px 8px",cursor:"pointer",flexShrink:0,opacity:isLocked?.45:1}}>
                   <div style={{fontSize:7,color:p.color}}>{p.cat}</div>
                   <div style={{fontFamily:"'Orbitron',monospace",fontSize:9.5,color:isAct?"#cce0ff":"#3a5a80"}}>{p.label.split("/")[0]}</div>
-                  {locked&&<div style={{fontSize:6.5,color:"#ffa000"}}>PRO</div>}
+                  {isLocked&&<div style={{fontSize:6.5,color:"#ffa000"}}>PRO</div>}
                 </button>
               </div>
               );})}
