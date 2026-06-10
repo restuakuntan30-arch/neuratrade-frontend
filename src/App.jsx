@@ -461,7 +461,7 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
     "\n- HOLD if fewer than 3 signals align OR market conditions unclear" +
     "\n- Risk per trade should scale with confidence (low conf = lower risk%)" +
     "\n\nCount exactly how many signals confirm your direction before deciding." +
-    "\n\nReturn ONLY this raw JSON (no markdown, no backtick):" +
+    "\n\nYou MUST respond with ONLY a JSON object. If no clear signal, set action to HOLD. Example response:" +
     '{"action":"BUY","pair":"BTC/USDT","cat":"CRYPTO","confidence":78,' +
     '"signal":"RSI Oversold + StochRSI Oversold + MACD Bull + Volume Spike",' +
     '"reason":"BTC RSI at 27 deeply oversold. StochRSI at 15 confirms extreme oversold. MACD histogram turned positive signaling momentum shift. Volume spike 2.3x average confirms buying pressure. ADX at 28 shows strong trend. MTF aligned on 1m/5m/15m. Price at Bollinger lower band. 5 confluent signals — high conviction.",' +
@@ -504,7 +504,9 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
       }
     } catch(gemErr) {
       if (gemErr.message === "RATE_LIMIT") throw gemErr;
-      throw new Error("Gemini: " + gemErr.message);
+      // Non-fatal Gemini error - log and fall through to Anthropic
+      console.warn("Gemini non-fatal error:", gemErr.message);
+      rawText = null; // Will try Anthropic fallback
     }
   }
 
@@ -590,16 +592,26 @@ async function getAIDecision(snapshot, portfolio, settings, extras) {
     // Try to find JSON-like structure anywhere in response
     var jsonMatch = raw.match(/\{[\s\S]*"action"[\s\S]*\}/);
     if (jsonMatch) { raw = jsonMatch[0]; si = 0; ei = raw.length - 1; }
-    else throw new Error("No JSON found in AI response: " + raw.slice(0,100));
+    else {
+      // Gemini sometimes returns plain text - try to extract action keyword
+      var upperRaw = raw.toUpperCase();
+      var guessAction = upperRaw.includes("BUY") ? "BUY" : upperRaw.includes("SELL") ? "SELL" : "HOLD";
+      console.warn("No JSON in AI response, guessing:", guessAction, "raw:", raw.slice(0,100));
+      return { action:guessAction, pair:snapshot.pair||"BTC/USDT", cat:"CRYPTO",
+               confidence:guessAction==="HOLD"?50:55, signal:"AI text analysis",
+               reason: raw.slice(0,120), confluenceCount:0, riskPct:1, targetPct:1.5, stopPct:0.8 };
+    }
   }
   var jsonStr = raw.slice(si, ei + 1);
   try {
     return JSON.parse(jsonStr);
   } catch(parseErr) {
-    // Try to fix common JSON issues (trailing commas, unquoted keys)
     var fixed = jsonStr.replace(/,\s*}/g,"}").replace(/,\s*]/g,"]");
     try { return JSON.parse(fixed); } catch(e2) {
-      throw new Error("JSON parse failed: " + jsonStr.slice(0,80));
+      // Last resort - return HOLD
+      return { action:"HOLD", pair:snapshot.pair||"BTC/USDT", cat:"CRYPTO",
+               confidence:50, signal:"JSON parse error", reason: e2.message,
+               confluenceCount:0, riskPct:1, targetPct:1.5, stopPct:0.8 };
     }
   }
 }
