@@ -2542,8 +2542,15 @@ function Dashboard(props) {
         var secretKey  = (configRef.current||cfg).secretKey;
         if (isRealMode && apiKey && secretKey) {
           var qty = parseFloat((riskAmt / entryPx).toFixed(6));
-          var minQty = pairObj.minQty || 0.00001;
-          if (qty >= minQty) {
+          var minQty      = pairObj.minQty || 0.00001;
+          var minNotional = 5.5; // Binance minimum order value $5 (tambah buffer)
+          var notional    = qty * entryPx;
+          addLog({type:"info",color:"#3a6aaa",
+            msg:"Order attempt: "+decision.action+" "+pairObj.label+" qty:"+qty.toFixed(6)+" ($"+notional.toFixed(2)+")"});
+          if (notional < minNotional) {
+            addLog({type:"warn",color:"#ff8800",
+              msg:"⚠ Order dibatalkan: nilai $"+notional.toFixed(2)+" < minimum Binance $"+minNotional+". Naikkan Risk per Trade ke 25%+ di Settings."});
+          } else if (qty >= minQty) {
             var BACKEND = "https://neuratrade-backend.onrender.com";
             fetch(BACKEND + "/api/order", {
               method: "POST",
@@ -2576,7 +2583,7 @@ function Dashboard(props) {
             });
           } else {
             addLog({type:"warn",color:"#ff8800",
-              msg:"⚠ Qty terlalu kecil ("+qty+"). Naikkan Risk per Trade di Settings."});
+              msg:"⚠ Qty terlalu kecil ("+qty.toFixed(8)+"). Naikkan Risk per Trade."});
           }
         }
         // ── Realistic win probability model ──
